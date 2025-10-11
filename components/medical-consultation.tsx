@@ -8,19 +8,47 @@ import { Textarea } from "@/components/ui/textarea"
 import { CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Mic, ImageIcon, Send, Info, AlertTriangle } from "lucide-react"
-import { useChat } from "ai/react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Mic, ImageIcon, Send, Info, AlertTriangle, Save, Trash2, FolderOpen } from "lucide-react"
+
+type Message = {
+  role: "user" | "assistant"
+  content: string
+  timestamp: Date
+}
+
+type HistoryRecord = {
+  id: string
+  date: Date
+  messages: Message[]
+  keywords: string[]
+}
 
 export function MedicalConsultation() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: "/api/medical-chat",
-  })
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const [isVoiceInput, setIsVoiceInput] = useState(false)
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [history, setHistory] = useState<HistoryRecord[]>([])
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [recordToDelete, setRecordToDelete] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("chat")
+  const [isLoadedFromHistory, setIsLoadedFromHistory] = useState(false)
+  const [currentRecordId, setCurrentRecordId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
@@ -42,7 +70,105 @@ export function MedicalConsultation() {
 
   const toggleVoiceInput = () => {
     setIsVoiceInput(!isVoiceInput)
-    // Here you would implement actual voice recognition
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() && !uploadedImage) return
+
+    const userMessage: Message = {
+      role: "user",
+      content: input,
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/medical-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ messages: [...messages, userMessage] }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: data.message || "感謝您的諮詢。我會盡力為您提供幫助。",
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error)
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: "抱歉，目前無法連接到服務。請稍後再試。",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, assistantMessage])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleEndConsultation = () => {
+  setMessages([])
+  setCurrentRecordId(null)
+  setSaveSuccess(false)
+  }
+
+  const handleSaveChat = () => {
+    if (messages.length === 0) return
+
+    const keywords = ["頭痛", "血壓", "飲食建議"] // 可自動產生或用AI分析
+
+    if (currentRecordId) {
+      // 更新既有歷史紀錄
+      setHistory(prev =>
+        prev.map(record =>
+          record.id === currentRecordId
+            ? { ...record, messages: [...messages], keywords }
+            : record
+        )
+      )
+    } else {
+      // 新增歷史紀錄
+      const newRecord: HistoryRecord = {
+        id: Date.now().toString(),
+        date: new Date(),
+        messages: [...messages],
+        keywords,
+      }
+      setHistory(prev => [newRecord, ...prev])
+      setCurrentRecordId(newRecord.id)
+    }
+
+    setSaveSuccess(true)
+  }
+
+  const handleOpenHistory = (record: HistoryRecord) => {
+    setMessages(record.messages)
+    setActiveTab("chat")
+    setCurrentRecordId(record.id)
+  }
+
+  const handleDeleteClick = (recordId: string) => {
+    setRecordToDelete(recordId)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleConfirmDelete = () => {
+    if (recordToDelete) {
+      setHistory((prev) => prev.filter((record) => record.id !== recordToDelete))
+      setRecordToDelete(null)
+    }
+    setDeleteDialogOpen(false)
   }
 
   const suggestedQuestions = [
@@ -62,7 +188,7 @@ export function MedicalConsultation() {
         </div>
       </CardHeader>
 
-      <Tabs defaultValue="chat" className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         <TabsList className="w-full mb-4">
           <TabsTrigger value="chat">對話諮詢</TabsTrigger>
           <TabsTrigger value="history">諮詢歷史</TabsTrigger>
@@ -81,8 +207,8 @@ export function MedicalConsultation() {
                     <Button
                       key={index}
                       variant="outline"
-                      className="justify-start text-left h-auto py-2"
-                      onClick={() => handleInputChange({ target: { value: question } } as any)}
+                      className="justify-start text-left h-auto py-2 bg-transparent"
+                      onClick={() => setInput(question)}
                     >
                       {question}
                     </Button>
@@ -108,6 +234,19 @@ export function MedicalConsultation() {
                       ))}
                     </div>
                   )}
+                  <div className={`text-xs mt-2 ${message.role === "user" ? "text-teal-100" : "text-gray-500"}`}>
+                    {message.timestamp
+                      .toLocaleString("zh-TW", {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })
+                      .replace(/\//g, "/")
+                      .replace(",", "")}
+                  </div>
                 </div>
               </div>
             ))}
@@ -139,14 +278,14 @@ export function MedicalConsultation() {
               {isVoiceInput ? (
                 <div className="border rounded-md p-4 text-center">
                   <p>正在聆聽您的聲音...</p>
-                  <Button type="button" variant="outline" className="mt-2" onClick={toggleVoiceInput}>
+                  <Button type="button" variant="outline" className="mt-2 bg-transparent" onClick={toggleVoiceInput}>
                     停止錄音
                   </Button>
                 </div>
               ) : (
                 <Textarea
                   value={input}
-                  onChange={handleInputChange}
+                  onChange={(e) => setInput(e.target.value)}
                   placeholder="請描述您的症狀或健康問題..."
                   className="min-h-[100px]"
                 />
@@ -168,38 +307,92 @@ export function MedicalConsultation() {
                     className="hidden"
                   />
                 </div>
-                <Button type="submit" disabled={isLoading || (!input && !uploadedImage)}>
-                  <Send size={18} className="mr-2" />
-                  發送
-                </Button>
+                <div className="flex items-center space-x-2">
+                  {saveSuccess && <span className="text-sm text-green-600 font-medium">已儲存</span>}
+                  <Button type="button" variant="outline" onClick={handleSaveChat} disabled={messages.length === 0}>
+                    <Save size={18} className="mr-2" />
+                    儲存
+                  </Button>
+                  <Button type="submit" disabled={isLoading || (!input && !uploadedImage)}>
+                    <Send size={18} className="mr-2" />
+                    發送
+                  </Button>
+                </div>
               </div>
             </form>
+
+            {messages.length > 0 && (
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={handleEndConsultation}
+                >
+                  結束諮詢
+                </Button>
+              </div>
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="history">
           <div className="space-y-4">
-            <div className="border rounded-md p-4">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-medium">2023/05/20 諮詢記錄</h3>
-                <Badge>頭痛</Badge>
+            {history.length === 0 ? (
+              <div className="text-center p-8 text-gray-500">
+                <p>尚無諮詢歷史記錄</p>
               </div>
-              <p className="text-sm text-gray-600">關於持續性頭痛的諮詢，建議進行進一步檢查...</p>
-            </div>
-            <div className="border rounded-md p-4">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-medium">2023/05/15 諮詢記錄</h3>
-                <Badge>過敏</Badge>
-              </div>
-              <p className="text-sm text-gray-600">季節性過敏症狀的諮詢，建議使用抗組織胺藥物...</p>
-            </div>
-            <div className="border rounded-md p-4">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="font-medium">2023/05/10 諮詢記錄</h3>
-                <Badge>飲食建議</Badge>
-              </div>
-              <p className="text-sm text-gray-600">關於高血壓患者的飲食建議諮詢...</p>
-            </div>
+            ) : (
+              history.map((record) => (
+                <div key={record.id} className="border rounded-md p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <h3 className="font-medium">
+                        {record.date
+                          .toLocaleString("zh-TW", {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: false,
+                          })
+                          .replace(/\//g, "/")
+                          .replace(",", "")}{" "}
+                        諮詢記錄
+                      </h3>
+                      <div className="flex gap-1 mt-1">
+                        {record.keywords.map((keyword, i) => (
+                          <Badge key={i}>{keyword}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => handleDeleteClick(record.id)}
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {record.messages[0]?.content.substring(0, 50)}
+                    {record.messages[0]?.content.length > 50 ? "..." : ""}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">共 {record.messages.length} 則訊息</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full bg-transparent"
+                    onClick={() => handleOpenHistory(record)}
+                  >
+                    <FolderOpen size={16} className="mr-2" />
+                    開啟
+                  </Button>
+                </div>
+              ))
+            )}
           </div>
         </TabsContent>
 
@@ -235,6 +428,21 @@ export function MedicalConsultation() {
           請注意：本系統提供的建議僅供參考，不能替代專業醫療診斷。如有緊急情況，請立即就醫或撥打急救電話。
         </p>
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>確認刪除</AlertDialogTitle>
+            <AlertDialogDescription>您確定要刪除此諮詢記錄嗎？此操作無法復原。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+              刪除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
