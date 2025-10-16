@@ -19,6 +19,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Mic, ImageIcon, Send, Info, AlertTriangle, Save, Trash2, FolderOpen } from "lucide-react"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Label } from "@/components/ui/label"
 
 type Message = {
   role: "user" | "assistant"
@@ -37,6 +39,7 @@ export function MedicalConsultation() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [loadingMessage, setLoadingMessage] = useState("")
   const [isVoiceInput, setIsVoiceInput] = useState(false)
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -46,6 +49,8 @@ export function MedicalConsultation() {
   const [activeTab, setActiveTab] = useState("chat")
   const [isLoadedFromHistory, setIsLoadedFromHistory] = useState(false)
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null)
+  const [selectedModel, setSelectedModel] = useState<"llama" | "gpt" | "auto">("auto")
+  const [endDialogOpen, setEndDialogOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -53,74 +58,25 @@ export function MedicalConsultation() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setUploadedImage(e.target?.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  const handleFileButtonClick = () => {
-    fileInputRef.current?.click()
-  }
-
   const toggleVoiceInput = () => {
     setIsVoiceInput(!isVoiceInput)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() && !uploadedImage) return
-
-    const userMessage: Message = {
-      role: "user",
-      content: input,
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsLoading(true)
-
-    try {
-      const response = await fetch("/api/medical-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ messages: [...messages, userMessage] }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        const assistantMessage: Message = {
-          role: "assistant",
-          content: data.message || "感謝您的諮詢。我會盡力為您提供幫助。",
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, assistantMessage])
-      }
-    } catch (error) {
-      console.error("Failed to send message:", error)
-      const assistantMessage: Message = {
-        role: "assistant",
-        content: "抱歉，目前無法連接到服務。請稍後再試。",
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, assistantMessage])
-    } finally {
-      setIsLoading(false)
+  const handleFileButtonClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
     }
   }
 
-  const handleEndConsultation = () => {
-  setMessages([])
-  setCurrentRecordId(null)
-  setSaveSuccess(false)
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setUploadedImage(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
   }
 
   const handleSaveChat = () => {
@@ -152,23 +108,131 @@ export function MedicalConsultation() {
     setSaveSuccess(true)
   }
 
+  const handleEndConsultation = () => {
+  setMessages([])
+  setCurrentRecordId(null)
+  setSaveSuccess(false)
+  }
+
+  const handleDeleteClick = (id: string) => {
+    setRecordToDelete(id)
+    setDeleteDialogOpen(true)
+  }
+
+  const handleEndClick = () => {
+    if (!saveSuccess) {
+      setEndDialogOpen(true)
+    } else {
+      handleEndConsultation()
+    }
+  }
+
   const handleOpenHistory = (record: HistoryRecord) => {
     setMessages(record.messages)
     setActiveTab("chat")
     setCurrentRecordId(record.id)
   }
 
-  const handleDeleteClick = (recordId: string) => {
-    setRecordToDelete(recordId)
-    setDeleteDialogOpen(true)
-  }
-
   const handleConfirmDelete = () => {
     if (recordToDelete) {
       setHistory((prev) => prev.filter((record) => record.id !== recordToDelete))
       setRecordToDelete(null)
+      setDeleteDialogOpen(false)
     }
-    setDeleteDialogOpen(false)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!input.trim() && !uploadedImage) return
+
+    const userMessage: Message = {
+      role: "user",
+      content: input,
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    const currentInput = input
+    setInput("")
+    setIsLoading(true)
+
+    try {
+      if (selectedModel === "auto") {
+        setLoadingMessage("正在分析中...")
+
+        const analyzeResponse = await fetch("/api/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: currentInput,
+          }),
+        })
+
+        if (!analyzeResponse.ok) {
+          throw new Error("Analysis failed")
+        }
+
+        const analysisData = await analyzeResponse.json()
+
+        setLoadingMessage("生成回覆中...")
+
+        const respondResponse = await fetch("/api/respond", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: currentInput,
+            analysis: analysisData,
+            messages: [...messages, userMessage],
+          }),
+        })
+
+        if (respondResponse.ok) {
+          const data = await respondResponse.json()
+          const assistantMessage: Message = {
+            role: "assistant",
+            content: data.message || "感謝您的諮詢。我會盡力為您提供幫助。",
+            timestamp: new Date(),
+          }
+          setMessages((prev) => [...prev, assistantMessage])
+        }
+      } else {
+        const response = await fetch("/api/medical-chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messages: [...messages, userMessage],
+            model: selectedModel,
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          const assistantMessage: Message = {
+            role: "assistant",
+            content: data.message || "感謝您的諮詢。我會盡力為您提供幫助。",
+            timestamp: new Date(),
+          }
+          setMessages((prev) => [...prev, assistantMessage])
+        }
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error)
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: "抱歉，目前無法連接到服務。請稍後再試。",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, assistantMessage])
+    } finally {
+      setIsLoading(false)
+      setLoadingMessage("")
+    }
   }
 
   const suggestedQuestions = [
@@ -179,7 +243,7 @@ export function MedicalConsultation() {
   ]
 
   return (
-    <div className="flex flex-col h-[80vh]">
+    <div className="flex flex-col min-h-[80vh]">
       <CardHeader className="px-0">
         <CardTitle className="text-xl text-teal-600">醫病諮詢語言模型</CardTitle>
         <div className="flex items-center mt-2 text-sm text-gray-500">
@@ -195,7 +259,39 @@ export function MedicalConsultation() {
           <TabsTrigger value="keywords">關鍵字分析</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="chat" className="flex-1 flex flex-col">
+        <TabsContent value="chat" className="flex flex-col">
+          <div className="mb-4 p-4 border rounded-md bg-gray-50">
+            <h3 className="font-medium text-sm mb-3">選擇 AI 模型</h3>
+            <RadioGroup
+              value={selectedModel}
+              onValueChange={(value) => setSelectedModel(value as "llama" | "gpt" | "auto")}
+            >
+              <div className="space-y-3">
+                <div className="flex items-start space-x-3">
+                  <RadioGroupItem value="auto" id="auto" className="mt-1" />
+                  <Label htmlFor="auto" className="cursor-pointer flex-1">
+                    <div className="font-medium">自動選擇（推薦）</div>
+                    <div className="text-xs text-gray-600 mt-1">系統會分析訊息內容與語氣，自動挑選最適合的模型</div>
+                  </Label>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <RadioGroupItem value="gpt" id="gpt" className="mt-1" />
+                  <Label htmlFor="gpt" className="cursor-pointer flex-1">
+                    <div className="font-medium">GPT</div>
+                    <div className="text-xs text-gray-600 mt-1">回答最詳細、邏輯完整，但生成速度較慢</div>
+                  </Label>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <RadioGroupItem value="llama" id="llama" className="mt-1" />
+                  <Label htmlFor="llama" className="cursor-pointer flex-1">
+                    <div className="font-medium">LLaMA</div>
+                    <div className="text-xs text-gray-600 mt-1">生成速度快、回答精簡，適合短問題</div>
+                  </Label>
+                </div>
+              </div>
+            </RadioGroup>
+          </div>
+
           <div className="flex-1 overflow-y-auto mb-4 space-y-4 p-4 border rounded-md">
             {messages.length === 0 && (
               <div className="text-center p-4">
@@ -262,6 +358,7 @@ export function MedicalConsultation() {
             {isLoading && (
               <div className="flex justify-start">
                 <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100">
+                  {loadingMessage && <p className="text-sm text-gray-600 mb-2">{loadingMessage}</p>}
                   <div className="flex space-x-2">
                     <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" />
                     <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce [animation-delay:0.2s]" />
@@ -327,7 +424,7 @@ export function MedicalConsultation() {
                   type="button"
                   variant="outline"
                   className="w-full bg-transparent"
-                  onClick={handleEndConsultation}
+                  onClick={handleEndClick}
                 >
                   結束諮詢
                 </Button>
@@ -439,6 +536,30 @@ export function MedicalConsultation() {
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
               刪除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={endDialogOpen} onOpenChange={setEndDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>尚未儲存紀錄</AlertDialogTitle>
+            <AlertDialogDescription>
+              您尚未儲存本次對話內容，若結束諮詢，聊天紀錄將不會被保存。
+              確定要結束嗎？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                handleEndConsultation()
+                setEndDialogOpen(false)
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              確定結束
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
