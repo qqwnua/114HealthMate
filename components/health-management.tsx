@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import {
   LineChart,
   Line,
@@ -23,6 +25,7 @@ import {
 import { AlertCircle, Upload, FileText, TrendingUp, AlertTriangle } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { PieLabelRenderProps } from "recharts"
 
 // Mock data
 const bloodPressureData = [
@@ -67,10 +70,39 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"]
 export function HealthManagement() {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [fileUploaded, setFileUploaded] = useState(false)
+  const [openDialog, setOpenDialog] = useState<string | null>(null)
+  const [bloodPressureForm, setBloodPressureForm] = useState({ systolic: "", diastolic: "" })
+  const [weightForm, setWeightForm] = useState({ value: "" })
+  const [sleepForm, setSleepForm] = useState({ hours: "", quality: "" })
+  const [nutritionForm, setNutritionForm] = useState({ protein: "", carbs: "", fat: "", fiber: "" })
 
   const handleFileUpload = () => {
     // Simulate file upload
     setFileUploaded(true)
+  }
+
+  const handleSaveBloodPressure = () => {
+    console.log("血壓數據:", bloodPressureForm)
+    setOpenDialog(null)
+    setBloodPressureForm({ systolic: "", diastolic: "" })
+  }
+
+  const handleSaveWeight = () => {
+    console.log("體重數據:", weightForm)
+    setOpenDialog(null)
+    setWeightForm({ value: "" })
+  }
+
+  const handleSaveSleep = () => {
+    console.log("睡眠數據:", sleepForm)
+    setOpenDialog(null)
+    setSleepForm({ hours: "", quality: "" })
+  }
+
+  const handleSaveNutrition = () => {
+    console.log("營養數據:", nutritionForm)
+    setOpenDialog(null)
+    setNutritionForm({ protein: "", carbs: "", fat: "", fiber: "" })
   }
 
   return (
@@ -108,7 +140,7 @@ export function HealthManagement() {
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-2 flex justify-end">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => setOpenDialog("bloodPressure")}>
                     添加數據
                   </Button>
                 </div>
@@ -132,7 +164,7 @@ export function HealthManagement() {
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-2 flex justify-end">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => setOpenDialog("weight")}>
                     添加數據
                   </Button>
                 </div>
@@ -158,7 +190,7 @@ export function HealthManagement() {
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-2 flex justify-end">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => setOpenDialog("sleep")}>
                     添加數據
                   </Button>
                 </div>
@@ -181,7 +213,11 @@ export function HealthManagement() {
                         outerRadius={80}
                         fill="#8884d8"
                         dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        label={(props) => {
+                          const name = props.name ?? ""
+                          const percent = Number(props.percent ?? 0)   // ← 顯式轉型
+                          return `${name} ${(percent * 100).toFixed(0)}%`
+                        }}
                       >
                         {nutritionData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -192,7 +228,7 @@ export function HealthManagement() {
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-2 flex justify-end">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => setOpenDialog("nutrition")}>
                     添加數據
                   </Button>
                 </div>
@@ -479,7 +515,11 @@ export function HealthManagement() {
                     您的總膽固醇為210 mg/dL，略高於正常範圍（&lt;200 mg/dL）。
                   </p>
                   <div className="mt-2">
-                    <Button variant="outline" size="sm" className="text-amber-600 border-amber-300 hover:bg-amber-100">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-amber-600 border-amber-300 hover:bg-amber-100 bg-transparent"
+                    >
                       查看建議
                     </Button>
                   </div>
@@ -492,7 +532,11 @@ export function HealthManagement() {
                   </div>
                   <p className="text-sm text-teal-600 mt-1">過去兩週內，有3天您的睡眠時間少於7小時。</p>
                   <div className="mt-2">
-                    <Button variant="outline" size="sm" className="text-teal-600 border-teal-300 hover:bg-teal-100">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-teal-600 border-teal-300 hover:bg-teal-100 bg-transparent"
+                    >
                       查看建議
                     </Button>
                   </div>
@@ -540,6 +584,169 @@ export function HealthManagement() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog components for each data entry form */}
+      {/* Blood Pressure Dialog */}
+      <Dialog open={openDialog === "bloodPressure"} onOpenChange={(open) => !open && setOpenDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加血壓數據</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="systolic">收縮壓 (mmHg)</Label>
+              <Input
+                id="systolic"
+                type="number"
+                placeholder="例如：120"
+                value={bloodPressureForm.systolic}
+                onChange={(e) => setBloodPressureForm({ ...bloodPressureForm, systolic: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="diastolic">舒張壓 (mmHg)</Label>
+              <Input
+                id="diastolic"
+                type="number"
+                placeholder="例如：80"
+                value={bloodPressureForm.diastolic}
+                onChange={(e) => setBloodPressureForm({ ...bloodPressureForm, diastolic: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenDialog(null)}>
+              取消
+            </Button>
+            <Button onClick={handleSaveBloodPressure}>儲存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Weight Dialog */}
+      <Dialog open={openDialog === "weight"} onOpenChange={(open) => !open && setOpenDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加體重數據</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="weight">體重 (kg)</Label>
+              <Input
+                id="weight"
+                type="number"
+                step="0.1"
+                placeholder="例如：67.5"
+                value={weightForm.value}
+                onChange={(e) => setWeightForm({ value: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenDialog(null)}>
+              取消
+            </Button>
+            <Button onClick={handleSaveWeight}>儲存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sleep Dialog */}
+      <Dialog open={openDialog === "sleep"} onOpenChange={(open) => !open && setOpenDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加睡眠數據</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="hours">睡眠時間 (小時)</Label>
+              <Input
+                id="hours"
+                type="number"
+                step="0.1"
+                placeholder="例如：7.5"
+                value={sleepForm.hours}
+                onChange={(e) => setSleepForm({ ...sleepForm, hours: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quality">睡眠品質 (1-10)</Label>
+              <Input
+                id="quality"
+                type="number"
+                min="1"
+                max="10"
+                placeholder="例如：8"
+                value={sleepForm.quality}
+                onChange={(e) => setSleepForm({ ...sleepForm, quality: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenDialog(null)}>
+              取消
+            </Button>
+            <Button onClick={handleSaveSleep}>儲存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nutrition Dialog */}
+      <Dialog open={openDialog === "nutrition"} onOpenChange={(open) => !open && setOpenDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加營養數據</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="protein">蛋白質 (%)</Label>
+              <Input
+                id="protein"
+                type="number"
+                placeholder="例如：25"
+                value={nutritionForm.protein}
+                onChange={(e) => setNutritionForm({ ...nutritionForm, protein: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="carbs">碳水化合物 (%)</Label>
+              <Input
+                id="carbs"
+                type="number"
+                placeholder="例如：45"
+                value={nutritionForm.carbs}
+                onChange={(e) => setNutritionForm({ ...nutritionForm, carbs: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fat">脂肪 (%)</Label>
+              <Input
+                id="fat"
+                type="number"
+                placeholder="例如：20"
+                value={nutritionForm.fat}
+                onChange={(e) => setNutritionForm({ ...nutritionForm, fat: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fiber">纖維 (%)</Label>
+              <Input
+                id="fiber"
+                type="number"
+                placeholder="例如：10"
+                value={nutritionForm.fiber}
+                onChange={(e) => setNutritionForm({ ...nutritionForm, fiber: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenDialog(null)}>
+              取消
+            </Button>
+            <Button onClick={handleSaveNutrition}>儲存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
