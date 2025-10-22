@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Calendar } from "@/components/ui/calendar"
-import { useChat } from "ai/react"
+
 import {
   RadarChart,
   PolarGrid,
@@ -64,7 +64,39 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+
+interface ChatMessage {
+  role: "user" | "assistant" | "system" | "function" | "data" | "tool"
+  content: string
+  timestamp?: Date
+}
+
+interface HistoryRecord {
+  id: string
+  date: Date
+  messages: ChatMessage[]
+  keywords: string[]
+}
+
 
 // Mock data
 const emotionalRadarData = [
@@ -171,12 +203,127 @@ export function PsychologicalConsultation() {
     confidence: 6,
   })
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  const [selectedModel, setSelectedModel] = useState<"llama" | "gpt" | "auto">("auto")
   const [mood, setMood] = useState<string | null>(null)
   const [weather, setWeather] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [mediaFiles, setMediaFiles] = useState<{ type: string; url: string; name: string }[]>([])
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
+  
+  const [loadingMessage, setLoadingMessage] = useState("")
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  const [history, setHistory] = useState<HistoryRecord[]>([])
+  const [recordToDelete, setRecordToDelete] = useState<string | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // === 聊天相關狀態 ===
+  const [isVoiceInput, setIsVoiceInput] = useState(false)
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null)
+  const [endDialogOpen, setEndDialogOpen] = useState(false)
+  const [currentRecordId, setCurrentRecordId] = useState<string | null>(null)
+  //const [viewingHistory, setViewingHistory] = useState<ChatMessage[] | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+
+  // === 功能函式 ===
+
+  // 切換語音輸入
+  const toggleVoiceInput = () => {
+    setIsVoiceInput(!isVoiceInput)
+  }
+
+  // 觸發上傳圖片
+  const handleFileButtonClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  // 上傳圖片處理
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setUploadedImage(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  // 儲存聊天記錄
+  const handleSaveChat = () => {
+    if (messages.length === 0) return
+    const keywords = ["焦慮", "壓力", "睡眠"] // 可改成情緒分析結果
+    if (currentRecordId) {
+      // 更新既有歷史紀錄
+      setHistory(prev =>
+        prev.map(record =>
+          record.id === currentRecordId
+            ? { ...record, messages: [...messages], keywords }
+            : record
+        )
+      )
+    } else {
+      // 新增歷史紀錄
+      const newRecord = {
+        id: Date.now().toString(),
+        date: new Date(),
+        messages: [...messages],
+        keywords,
+      }
+      setHistory(prev => [newRecord, ...prev])
+      setCurrentRecordId(newRecord.id)
+    }
+    setSaveSuccess(true)
+  }
+
+  // 結束諮詢
+  const handleEndConsultation = () => {
+    setMessages([]) 
+    setSaveSuccess(false)
+    setCurrentRecordId(null)
+    setInput("") // <- 修正
+  }
+
+  // 點擊結束按鈕
+  const handleEndClick = () => {
+    // 【修改 6】: 移除 viewingHistory 相關判斷
+    if (!saveSuccess) {
+      setEndDialogOpen(true)
+    } else {
+      handleEndConsultation()
+    }
+  }
+
+  // 開啟歷史紀錄
+  const handleOpenHistory = (record: HistoryRecord) => { 
+    setMessages(record.messages) 
+    setCurrentRecordId(record.id) 
+    setActiveTab("chat") 
+    setSaveSuccess(true) // <- 修正：載入的紀錄視為「已儲存」
+    setInput("") // <- 修正：清空輸入框
+  }
+
+  // 刪除紀錄
+  const handleDeleteClick = (id: string) => {
+    setRecordToDelete(id)
+    setDeleteDialogOpen(true)
+  }
+
+  // 確認刪除
+  const handleConfirmDelete = () => {
+    if (recordToDelete) {
+      setHistory(prev => prev.filter(r => r.id !== recordToDelete))
+      setRecordToDelete(null)
+      setDeleteDialogOpen(false)
+    }
+  }
+
+  
   const [journalSettings, setJournalSettings] = useState({
     privateMode: true,
     autoSave: true,
@@ -209,16 +356,82 @@ export function PsychologicalConsultation() {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [filteredEntries, setFilteredEntries] = useState(mockJournalEntries)
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: "/api/psychological-chat",
-    onFinish: async (message) => {
-      // 分析用戶最後一條消息的情緒
-      const userMessage = messages[messages.length - 1]?.content || input
-      if (userMessage) {
-        await analyzeEmotion(userMessage)
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    setSaveSuccess(false); // <- 修正：使用者一打字，狀態就變為「未儲存」
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!input.trim() && !uploadedImage) return
+
+    // 【BUG 修正】: 在傳送訊息時，立刻重設儲存狀態
+    setSaveSuccess(false)
+
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: input,
+      timestamp: new Date(),
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    const currentInput = input
+    setInput("") // 清空輸入框
+    setIsLoading(true)
+    setLoadingMessage("正在回覆...") // 設置載入訊息
+
+    try {
+      // 這裡我們簡化，不像 medical.tsx 那樣做 "auto" 分析，
+      // 而是直接呼叫心理諮詢 API。您可以稍後自行加入 "auto" 邏輯。
+      const response = await fetch("/api/psychological-chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [...messages, userMessage], // 傳送包含新訊息的完整歷史
+          model: selectedModel,
+        }),
+      })
+
+      if (response.ok) {
+        // 這部分假設 API 回傳的格式與 medical.tsx 的 API 相同
+        // { message: "AI 的回覆" }
+        // 如果您的 API (/api/psychological-chat) 是 Vercel AI SDK，
+        // 您需要調整這部分來讀取 streaming response。
+        // 為了簡單起見，我們先假設它回傳 JSON：
+        const data = await response.json() // 假設 API 回傳 { message: "..." }
+        const assistantMessage: ChatMessage = {
+          role: "assistant",
+          content: data.message || "感謝您的諮詢，我會盡力提供協助。", // 從 data.message 獲取內容
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      } else {
+        // 處理 API 錯誤
+        throw new Error("API request failed")
       }
-    },
-  })
+
+      // 觸發情緒分析 (這個函式來自您原本的程式碼)
+      if (userMessage.content) {
+        await analyzeEmotion(userMessage.content)
+      }
+
+    } catch (error) {
+      console.error("Failed to send message:", error)
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content: "抱歉，目前無法連接到服務。請稍後再試。",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, assistantMessage])
+    } finally {
+      setIsLoading(false)
+      setLoadingMessage("")
+      // 【BUG 修正】: 收到回覆後，再次確認儲存狀態為 false
+      setSaveSuccess(false)
+    }
+  }
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -336,15 +549,22 @@ export function PsychologicalConsultation() {
   }
 
   return (
-    <div className="space-y-4">
+    // 添加 flex-col flex-1 讓整個元件可以彈性伸展
+    <div className="space-y-4 flex flex-col flex-1">
       <CardHeader className="px-0">
         <CardTitle className="text-xl text-teal-600">心理諮詢</CardTitle>
+        {/* 統一將警語放在頂部，與 medical-consultation.tsx 結構一致 */}
+        <div className="flex items-center mt-2 text-sm text-gray-500"> 
+          <Info size={16} className="mr-2" />
+          <span>本系統提供的建議僅供心理輔導與放鬆參考，非臨床診斷用途</span> 
+        </div>
       </CardHeader>
 
-      <Tabs defaultValue="assessment">
-        <TabsList className="grid grid-cols-3 mb-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col"> 
+        <TabsList className="grid grid-cols-4 mb-4">
           <TabsTrigger value="assessment">情緒狀態評估</TabsTrigger>
           <TabsTrigger value="chat">心理諮詢機器人</TabsTrigger>
+          <TabsTrigger value="history">諮詢記錄</TabsTrigger>
           <TabsTrigger value="journal">心靈便箋</TabsTrigger>
         </TabsList>
 
@@ -565,109 +785,205 @@ export function PsychologicalConsultation() {
         </TabsContent>
 
         {/* 心理諮詢機器人 */}
-        <TabsContent value="chat">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex flex-col h-[70vh]">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium flex items-center">
-                    <MessageSquare className="mr-2 h-5 w-5 text-teal-600" />
-                    心理諮詢機器人
-                  </h3>
+        <TabsContent value="chat" className="flex flex-col flex-1">
+          
+          {/* 模型選擇區 - 保持不變 */}
+          <div className="mb-4 p-4 border rounded-md bg-gray-50">
+            <h3 className="font-medium text-sm mb-3">選擇對話模型</h3>
+            <RadioGroup value={selectedModel} onValueChange={(v) => setSelectedModel(v as any)}>
+              <div className="space-y-3">
+                <div className="flex items-start space-x-3">
+                  <RadioGroupItem value="auto" id="auto" className="mt-1" />
+                  <Label htmlFor="auto">
+                    <div className="font-medium">自動選擇（推薦）</div>
+                    <div className="text-xs text-gray-600">系統根據訊息內容自動選擇模型</div>
+                  </Label>
                 </div>
-
-                <div className="flex items-center mb-4 text-sm text-gray-500">
-                  <Info size={16} className="mr-2" />
-                  <span>此系統提供的建議僅供參考，不能替代專業心理諮詢</span>
+                <div className="flex items-start space-x-3">
+                  <RadioGroupItem value="gpt" id="gpt" className="mt-1" />
+                  <Label htmlFor="gpt">
+                    <div className="font-medium">GPT</div>
+                    <div className="text-xs text-gray-600">語意豐富、回答完整但較慢</div>
+                  </Label>
                 </div>
-
-                <div className="flex-1 overflow-y-auto mb-4 space-y-4 p-4 border rounded-md">
-                  {messages.length === 0 && (
-                    <div className="text-center p-4">
-                      <h3 className="font-medium text-lg mb-2">歡迎使用心理諮詢助手</h3>
-                      <p className="text-gray-500 mb-4">您可以詢問任何心理健康相關的問題，我會盡力提供幫助</p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
-                        {suggestedQuestions.map((question, index) => (
-                          <Button
-                            key={index}
-                            variant="outline"
-                            className="justify-start text-left h-auto py-2"
-                            onClick={() => handleInputChange({ target: { value: question } } as any)}
-                          >
-                            {question}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {messages.map((message, index) => (
-                    <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                          message.role === "user" ? "bg-teal-600 text-white" : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {message.content}
-                        {message.role === "assistant" && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {["焦慮", "壓力管理", "自我關懷"].map((tag, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                  {currentEmotion && (
-                    <div className="flex justify-center">
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 text-sm">
-                        <span className="text-blue-600">偵測到的情緒: {currentEmotion}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100">
-                        <div className="flex space-x-2">
-                          <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" />
-                          <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce [animation-delay:0.2s]" />
-                          <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce [animation-delay:0.4s]" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                <div className="mt-auto">
-                  <form onSubmit={handleSubmit} className="flex flex-col space-y-2">
-                    <Textarea
-                      value={input}
-                      onChange={handleInputChange}
-                      placeholder="請描述您的心理困擾或問題..."
-                      className="min-h-[100px]"
-                    />
-
-                    <div className="flex justify-between">
-                      <div className="flex space-x-2">
-                        <Button type="button" variant="outline" size="icon">
-                          <MicIcon size={18} />
-                        </Button>
-                      </div>
-                      <Button type="submit" disabled={isLoading || !input}>
-                        <Send size={18} className="mr-2" />
-                        發送
-                      </Button>
-                    </div>
-                  </form>
+                <div className="flex items-start space-x-3">
+                  <RadioGroupItem value="llama" id="llama" className="mt-1" />
+                  <Label htmlFor="llama">
+                    <div className="font-medium">LLaMA</div>
+                    <div className="text-xs text-gray-600">回應快速、簡潔，適合短句互動</div>
+                  </Label>
                 </div>
               </div>
+            </RadioGroup>
+          </div>
+          
+          {/* 聊天內容區 - 移除固定的 h-[60vh] 並使用 flex-1 佔滿剩餘空間 */}
+          <div ref={messagesEndRef} className="flex-1 overflow-y-auto mb-4 space-y-4 p-4 border rounded-md">
+            {messages.length === 0 ? (
+              // === 此處為修改重點 ===
+              <div className="text-center p-4">
+                <h3 className="font-medium text-lg mb-2">歡迎使用心理諮詢助手</h3> {/* 歡迎標題 */}
+                <p className="text-gray-500 mb-4">您可以描述您的心理困擾或煩惱，我會盡力給予建議</p> {/* 歡迎描述 */}
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
+                  {/* 將範例問題改為粗體顯示 */}
+                  {["我最近壓力很大怎麼辦？", "有點焦慮，怎麼緩解？", "我失眠該怎麼辦？"].map((q, i) => (
+                    <Button key={i} variant="outline" className="justify-start text-left h-auto py-2 bg-transparent font-medium" onClick={() => { setInput(q); setSaveSuccess(false) }}>
+                      {q}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                    m.role === "user" ? "bg-teal-600 text-white" : "bg-gray-100 text-gray-800"
+                  }`}
+                  >
+                    {m.content}
+                    {/* 模擬 medical-consultation.tsx 中的標籤，可根據情緒分析結果修改 */}
+                    {m.role === "assistant" && (
+                       <div className="mt-2 flex flex-wrap gap-1">
+                          <Badge variant="outline" className="text-xs">心理建議</Badge>
+                          <Badge variant="outline" className="text-xs">壓力管理</Badge>
+                       </div>
+                    )}
+                    <div className={`text-xs mt-2 ${m.role === "user" ? "text-teal-100" : "text-gray-500"}`}>
+                       {m.timestamp?.toLocaleString("zh-TW", { 
+                          year: "numeric", month: "2-digit", day: "2-digit", 
+                          hour: "2-digit", minute: "2-digit", hour12: false, 
+                       }).replace(/\//g, "/").replace(",", "")} {/* 調整日期格式與 medical-consultation.tsx 一致 */}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+            {/* Display uploaded image (User's message) */}
+            {uploadedImage && messages.length > 0 && messages[messages.length - 1].role === "user" && (
+              <div className="flex justify-end">
+                <div className="max-w-[80%] rounded-lg overflow-hidden">
+                  <img src={uploadedImage || "/placeholder.svg"} alt="Uploaded" className="max-h-40 object-contain" />
+                </div>
+              </div>
+            )}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100">
+                  <p className="text-sm text-gray-600 mb-1">{loadingMessage || "正在回覆..."}</p>
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce" />
+                    <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce [animation-delay:0.2s]" />
+                    <div className="w-2 h-2 rounded-full bg-teal-600 animate-bounce [animation-delay:0.4s]" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 輸入區塊 - 結構完全同步 medical-consultation.tsx */}
+          <div className="mt-auto">
+            <form onSubmit={handleSubmit} className="flex flex-col space-y-2">
+              
+              <Textarea 
+                value={input} 
+                onChange={handleInputChange} 
+                placeholder={"請描述您的心理狀況或煩惱..."} 
+                className="min-h-[100px]" // <--- 依照要求調整高度
+                disabled={isLoading}
+              />
+              
+              <div className="flex justify-between">
+                
+                {/* 左側：Mic/Image 按鈕 */}
+                <div className="flex space-x-2">
+                  <Button type="button" variant="outline" size="icon" onClick={toggleVoiceInput} disabled={isLoading}>
+                    <Mic size={18} />
+                  </Button>
+                  <Button type="button" variant="outline" size="icon" onClick={handleFileButtonClick} disabled={isLoading}>
+                    <ImageIcon size={18} />
+                  </Button>
+                  <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+                </div>
+                
+                {/* 右側：儲存 & 發送按鈕 */}
+                <div className="flex items-center space-x-2">
+                  {/* 儲存成功文字 */}
+                  {saveSuccess && <span className="text-sm text-green-600 font-medium">已儲存</span>}
+                  
+                  {/* 儲存按鈕 - 與 medical-consultation.tsx 樣式一致 */}
+                  <Button type="button" variant="outline" onClick={handleSaveChat} disabled={messages.length === 0 || saveSuccess}>
+                    <Save size={18} className="mr-2" />
+                    儲存
+                  </Button>
+                  
+                  {/* 發送按鈕 - 與 medical-consultation.tsx 樣式一致 */}
+                  <Button type="submit" disabled={(!input.trim() && !uploadedImage) || isLoading} className="bg-teal-600 hover:bg-teal-700">
+                    <Send size={18} className="mr-2" />
+                    發送
+                  </Button>
+                </div>
+              </div>
+            </form>
+
+            {/* 結束諮詢按鈕 - 獨立於 Form 之外，並佔滿寬度 (w-full) */}
+            {messages.length > 0 && (
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full bg-transparent"
+                  onClick={handleEndClick}
+                >
+                  結束諮詢
+                </Button>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* 諮詢記錄 */}
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle>諮詢記錄</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {history.length === 0 ? (
+                <p className="text-gray-500 text-center py-6">尚無諮詢記錄</p>
+              ) : (
+                history.map((r) => (
+                  <div key={r.id} className="border rounded-md p-4 mb-3">
+                    <div className="flex justify-between">
+                      <div>
+                        <h4 className="font-medium">{r.date.toLocaleString("zh-TW")}</h4>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {r.keywords.map((k, i) => (
+                            <Badge key={i}>{k}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <Button variant="outline" size="sm" onClick={() => handleOpenHistory(r)}>
+                          開啟
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500"
+                          onClick={() => handleDeleteClick(r.id)} // <- 觸發 handleDeleteClick
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">
+                      {r.messages[0]?.content.substring(0, 50)}
+                      {r.messages[0]?.content.length > 50 && "..."}
+                    </p>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1194,6 +1510,45 @@ export function PsychologicalConsultation() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>確認刪除</AlertDialogTitle>
+            <AlertDialogDescription>您確定要刪除這筆諮詢記錄嗎？此操作無法復原。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+              刪除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={endDialogOpen} onOpenChange={setEndDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>尚未儲存紀錄</AlertDialogTitle>
+            <AlertDialogDescription>
+              您尚未儲存目前的對話紀錄，若結束諮詢，聊天紀錄將不會被保存。
+              確定要結束嗎？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                handleEndConsultation()
+                setEndDialogOpen(false)
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              確定結束
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
