@@ -143,92 +143,58 @@ export function MedicalConsultation() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() && !uploadedImage) return
+    if (!input.trim()) return
 
-    const userMessage: Message = {
-      role: "user",
-      content: input,
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
+    const userMessage: Message = { role: "user", content: input, timestamp: new Date() }
+    setMessages(prev => [...prev, userMessage])
     const currentInput = input
     setInput("")
     setIsLoading(true)
 
     try {
-      if (selectedModel === "auto") {
-        setLoadingMessage("正在分析中...")
+      setLoadingMessage("正在分析中...")
 
-        const analyzeResponse = await fetch("/api/analyze", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: currentInput,
-          }),
-        })
+      // 🔥 新版 API：語義分析
+      const analyzeResponse = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: currentInput }),
+      })
 
-        if (!analyzeResponse.ok) {
-          throw new Error("Analysis failed")
-        }
+      if (!analyzeResponse.ok) throw new Error(`分析失敗：${analyzeResponse.status}`)
+      const analyzeData = await analyzeResponse.json()
 
-        const analysisData = await analyzeResponse.json()
+      setLoadingMessage("生成回覆中...")
 
-        setLoadingMessage("生成回覆中...")
+      // 🔥 新版 API：生成回覆
+      const respondResponse = await fetch("/api/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: currentInput,
+          analysis: analyzeData.analysis,
+          model: selectedModel, // <── 關鍵：根據使用者選擇的模型
+          history: messages.map(m => ({ role: m.role, content: m.content })),
+        }),
+      })
 
-        const respondResponse = await fetch("/api/respond", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: currentInput,
-            analysis: analysisData,
-            messages: [...messages, userMessage],
-          }),
-        })
+      if (!respondResponse.ok) throw new Error(`回應生成失敗：${respondResponse.status}`)
 
-        if (respondResponse.ok) {
-          const data = await respondResponse.json()
-          const assistantMessage: Message = {
-            role: "assistant",
-            content: data.message || "感謝您的諮詢。我會盡力為您提供幫助。",
-            timestamp: new Date(),
-          }
-          setMessages((prev) => [...prev, assistantMessage])
-        }
-      } else {
-        const response = await fetch("/api/medical-chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            messages: [...messages, userMessage],
-            model: selectedModel,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          const assistantMessage: Message = {
-            role: "assistant",
-            content: data.message || "感謝您的諮詢。我會盡力為您提供幫助。",
-            timestamp: new Date(),
-          }
-          setMessages((prev) => [...prev, assistantMessage])
-        }
-      }
-    } catch (error) {
-      console.error("Failed to send message:", error)
+      const respondData = await respondResponse.json()
       const assistantMessage: Message = {
         role: "assistant",
-        content: "抱歉，目前無法連接到服務。請稍後再試。",
+        content: respondData.reply || respondData.message || "抱歉，目前無法生成回覆。",
         timestamp: new Date(),
       }
-      setMessages((prev) => [...prev, assistantMessage])
+
+      setMessages(prev => [...prev, assistantMessage])
+
+    } catch (err) {
+      console.error("❌ 錯誤:", err)
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", content: "抱歉，目前無法連線到服務。", timestamp: new Date() },
+      ])
     } finally {
       setIsLoading(false)
       setLoadingMessage("")
