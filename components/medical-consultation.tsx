@@ -295,10 +295,10 @@ export function MedicalConsultation() {
       </CardHeader>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <TabsList className="w-full mb-4">
-          <TabsTrigger value="chat">對話諮詢</TabsTrigger>
-          <TabsTrigger value="history">諮詢歷史</TabsTrigger>
-          <TabsTrigger value="keywords">關鍵字分析</TabsTrigger>
+        <TabsList className="grid grid-cols-3 w-full mb-4">
+            <TabsTrigger value="chat">對話諮詢</TabsTrigger>
+            <TabsTrigger value="history">諮詢歷史</TabsTrigger>
+            <TabsTrigger value="keywords">關鍵字分析</TabsTrigger>
         </TabsList>
 
         <TabsContent value="chat" className="flex flex-col">
