@@ -96,8 +96,7 @@ export default function Home() {
       case "collaboration":
         return <TreatmentCollaboration />
       case "reminders":
-        // 注意: 這個組件 HealthPlanReminder 必須存在於 components/health-plan-reminder.tsx
-        return <HealthPlanReminder /> 
+        return <HealthPlanReminder />
       default:
         return renderMainInterface()
     }
@@ -162,6 +161,12 @@ export default function Home() {
     </div>
   )
 }
+
+/*    
+      <Card className="dark:bg-gray-800 dark:border-gray-700">
+        <CardContent className="p-4">{renderComponent()}</CardContent>
+      </Card>
+*/
 
 // 功能卡片組件
 function FunctionCard({

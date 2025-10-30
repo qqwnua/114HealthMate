@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>聊天 Demo（分析 → 生成 → 顯示）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto; background:#f6f7fb; margin:0; }
+    .wrap { max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    .card { background:#fff; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,.06); padding:20px; }
+    .log { height: 360px; overflow-y: auto; border:1px solid #eee; border-radius:12px; padding:12px; background:#fafafa; }
+    .row { margin: 6px 0; }
+    .user { text-align:right; }
+    .bubble { display:inline-block; padding:10px 14px; border-radius:16px; max-width: 90%; white-space:pre-wrap; }
+    .bubble.user { background:#dbeafe; }
+    .bubble.bot { background:#ede9fe; }
+    form { display:flex; gap:8px; margin-top:12px; }
+    input, button { padding:10px 12px; border-radius:10px; border:1px solid #ddd; }
+    button { background:#2563eb; color:#fff; border:0; }
+    button:disabled { opacity:.6; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>聊天 Demo（BERT 類分析 → GPT/LLaMA 生成）</h1>
+    <div class="card">
+      <div id="log" class="log"></div>
+      <form id="chatForm">
+        <input id="text" placeholder="輸入訊息..." style="flex:1" />
+        <button type="submit">送出</button>
+      </form>
+      <small id="hint"></small>
+    </div>
+  </div>
+
+  <script>
+    const log = document.getElementById('log');
+    const form = document.getElementById('chatForm');
+    const input = document.getElementById('text');
+    const hint = document.getElementById('hint');
+
+    function addMsg(role, content) {
+      const row = document.createElement('div');
+      row.className = 'row' + (role === 'user' ? ' user' : '');
+      const b = document.createElement('div');
+      b.className = 'bubble ' + (role === 'user' ? 'user' : 'bot');
+      b.textContent = content;
+      row.appendChild(b);
+      log.appendChild(row);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function analyze(message) {
+      const r = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ message })
+      });
+      return r.json();
+    }
+
+    async function respond(message, analysis, history) {
+      const r = await fetch('/api/respond', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ message, analysis, history })
+      });
+      return r.json();
+    }
+
+    const history = [];
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+
+      // 顯示使用者訊息
+      addMsg('user', text);
+      history.push({ role: 'user', content: text });
+      input.value = '';
+      form.querySelector('button').disabled = true;
+      hint.textContent = '思考中…';
+
+      try {
+        // 1) 分析
+        const a = await analyze(text);
+        if (a.status !== 'success') throw new Error(a.message || 'analyze failed');
+
+        // 2) 生成回覆（若沒設 OPENAI_API_KEY，會收到示範假回覆）
+        const r = await respond(text, a.analysis, history);
+        if (r.status !== 'success') throw new Error(r.message || 'respond failed');
+
+        addMsg('assistant', r.reply);
+        history.push({ role: 'assistant', content: r.reply });
+      } catch (err) {
+        addMsg('assistant', '（錯誤）' + (err.message || String(err)));
+      } finally {
+        form.querySelector('button').disabled = false;
+        hint.textContent = '';
+      }
+    });
+  </script>
+</body>
+</html>

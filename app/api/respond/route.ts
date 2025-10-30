@@ -24,18 +24,14 @@ export async function POST(req: NextRequest) {
 
     // 構建完整的 BERT 分析結果
     const bertAnalysis: BertAnalysisResult = {
-    sentiment_score: (analysis as any)?.sentiment ?? 0.5,
-    risk_score: (analysis as any)?.risk_score ?? 0.3,
-    outline: (analysis as any)?.outline ?? [],
-    keywords: (analysis as any)?.keywords ?? [],
-    categories: (analysis as any)?.categories ?? [],
-    urgency_level: (analysis as any)?.urgency_level ?? "low",
-    raw_text: message,
-    timestamp: new Date().toISOString(),
-
-    // 以下為你型別需要但原本沒有提供的欄位（請根據 BertAnalysisResult 的實際定義調整型別/預設）
-    suicide_risk: (analysis as any)?.suicide_risk ?? false,    // 假設 bool；若型別為 number，改成 0
-    emotion_state: (analysis as any)?.emotion_state ?? undefined // 假設為 string | undefined
+      sentiment_score: analysis?.sentiment || 0.5,
+      risk_score: analysis?.risk_score || 0.3,
+      outline: analysis?.outline || [],
+      keywords: analysis?.keywords || [],
+      categories: analysis?.categories || [],
+      urgency_level: analysis?.urgency_level || "low",
+      raw_text: message,
+      timestamp: new Date().toISOString(),
     };
 
     // 調用智能模型路由
