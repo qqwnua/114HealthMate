@@ -83,10 +83,9 @@ interface HealthProfile {
   height: string;
   weight: string;
   bloodType: string;
-  allergies: string; // keep as string for textarea
-  medications: string; // keep as string for textarea
+  allergies: string; 
+  medications: string;
   medicalHistory: string;
-  chronicConditions: string[]; // array of tags
   familyHistory: string;
   smokingStatus: string;
   alcoholConsumption: string;
@@ -121,33 +120,33 @@ export function PersonalizationSettings({
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
-  // 用戶資料（預設值，實際上你會從 API 載入）
+  // 用戶資料
   const [userProfile, setUserProfile] = useState<UserProfile>({
-    name: "王小明",
-    email: "wang.xiaoming@email.com",
-    phone: "0912-345-678",
+    name: "",
+    email: "",
+    phone: "",
     avatar: "/placeholder.svg",
-    birthDate: "1988-05-15",
-    gender: "male",
-    address: "台北市大安區信義路四段123號",
-    emergencyContact: "王小華",
-    emergencyPhone: "0987-654-321",
+    birthDate: "",
+    gender: "",
+    address: "",
+    emergencyContact: "",
+    emergencyPhone: "",
   });
 
-  // 健康資料（預設）
-  const [healthProfile, setHealthProfile] = useState<HealthProfile>({
-    height: "175",
-    weight: "70",
-    bloodType: "A+",
-    allergies: "花粉過敏",
-    medications: "維生素D補充劑",
-    medicalHistory: "2020年闌尾炎手術",
-    chronicConditions: ["高血壓"],
-    familyHistory: "父親有糖尿病史",
-    smokingStatus: "never",
-    alcoholConsumption: "occasional",
-    exerciseFrequency: "3-4times",
-  });
+// ---------------------
+// 健康資料初始化
+const [healthProfile, setHealthProfile] = useState<HealthProfile>({
+  height: "",
+  weight: "",
+  bloodType: "A+",
+  allergies: "",
+  medications: "",
+  medicalHistory: "",
+  familyHistory: "",
+  smokingStatus: "never",
+  alcoholConsumption: "never",
+  exerciseFrequency: "never",
+});
 
   // 系統偏好
   const [systemPreferences, setSystemPreferences] = useState<SystemPreferences>({
@@ -171,56 +170,98 @@ export function PersonalizationSettings({
     confirmPassword: "",
   });
 
-  // 初始化 — 從 localStorage 載入系統偏好（safe 判斷 window）
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const savedFont = localStorage.getItem("accessibility-fontSize");
-      const savedHigh = localStorage.getItem("accessibility-highContrast");
-      const savedDark = localStorage.getItem("accessibility-darkMode");
-      const savedTTS = localStorage.getItem("accessibility-textToSpeech");
-      const savedColor = localStorage.getItem("accessibility-colorBlindMode");
-
-      setSystemPreferences((prev) => ({
+  const handleProfileChange = (field: keyof UserProfile, value: string) => {
+    setUserProfile(prev => ({
         ...prev,
-        fontSize: savedFont ? parseInt(savedFont, 10) : prev.fontSize,
-        highContrast: savedHigh === "true" ? true : prev.highContrast,
-        darkMode: savedDark === "true" ? true : prev.darkMode,
-        textToSpeechEnabled: savedTTS === "true" ? true : prev.textToSpeechEnabled,
-        colorBlindMode: (savedColor as ColorBlindMode) || prev.colorBlindMode,
-        emailNotifications:
-          localStorage.getItem("notification-email") !== "false",
-        pushNotifications:
-          localStorage.getItem("notification-push") !== "false",
-        smsNotifications: localStorage.getItem("notification-sms") === "true",
-        healthReminders:
-          localStorage.getItem("notification-health") !== "false",
-        appointmentReminders:
-          localStorage.getItem("notification-appointment") !== "false",
-        medicationReminders:
-          localStorage.getItem("notification-medication") !== "false",
-        exerciseReminders:
-          localStorage.getItem("notification-exercise") !== "false",
-      }));
-    } catch (e) {
-      console.warn("failed to read localStorage", e);
+        [field]: value,
+    }));
+};
+
+// components/personalization-settings.tsx (從約 225 行開始替換)
+// ---------------------
+// 從 API 載入資料 (完整修正版)
+useEffect(() => {
+  if (!open) return;
+
+  const userId = localStorage.getItem("userId");
+  if (!userId) {
+    console.warn("尚未登入，無法取得 userId");
+    return;
+  }
+
+  // --- 1. 🔴 載入個人基本資料 (補回遺失的邏輯) ---
+  fetch(`/api/personal_info?userId=${userId}`)
+  .then(res => {
+    if (!res.ok) throw new Error(`Personal API Error, status: ${res.status}`);
+    return res.json();
+  })
+  .then(data => {
+    if (data && Object.keys(data).length > 0) { 
+        setUserProfile((prevProfile) => ({
+            ...prevProfile,
+            name: data.name ?? "",
+            email: data.email ?? prevProfile.email,
+            phone: data.phone ?? "", 
+            avatar: data.avatar_url ?? "/placeholder.svg",
+            // 🔴 修正：使用 'birthDate' (駝峰式) 接收 'birthdate' (後端值)
+            birthDate: data.birthdate ?? "", 
+            // 🔴 這是正確的，將 'male'/'female'/'other' 設給 state
+            gender: data.gender ?? "", 
+            address: data.address ?? "",
+            // 🔴 修正：確保載入緊急聯絡資訊 (如果後端是 emergency_contact/phone)
+            emergencyContact: data.emergencyContact ?? data.emergency_contact ?? "",
+            emergencyPhone: data.emergencyPhone ?? data.emergency_phone ?? "",
+        }));
+    } else {
+        // 確保沒有資料時性別也設為空值
+        setUserProfile((prevProfile) => ({ ...prevProfile, gender: "" }));
     }
+  })
+  .catch(err => console.error("❌ 抓取個人資料失敗:", err));
+
+
+  // --- 2. 載入健康資料 (保持現有邏輯) ---
+  type BackendHealthData = Record<string, any>;
+  fetch(`/api/health_info?userId=${userId}`)
+  .then(res => {
+    if (res.status === 404) return {};
+    if (!res.ok) throw new Error(`Health API Error, status: ${res.status}`);
+    return res.json() as Promise<BackendHealthData>;
+  })
+  .then(data => {
+    const healthData = (data || {}) as BackendHealthData;
+    setHealthProfile({
+      height: healthData.height?.toString() ?? "",
+      weight: healthData.weight?.toString() ?? "",
+      bloodType: healthData.blood_type ?? "A+",
+      allergies: healthData.allergies ?? "",
+      medications: healthData.medications ?? "",
+      medicalHistory: healthData.medical_history ?? "", 
+      familyHistory: healthData.family_history ?? "",
+      smokingStatus: healthData.smoking_status ?? "never",
+      alcoholConsumption: healthData.alcohol_consumption ?? "never",
+      exerciseFrequency: healthData.exercise_frequency ?? "never",
+    });
+  })
+  .catch(err => console.error("❌ 抓取健康資料失敗:", err));
+
+}, [open]);
+
+  // ---------------------
+  // 系統偏好應用
+  useEffect(() => {
+    applySystemPreferences(systemPreferences);
   }, []);
 
-  // apply preferences (font / dark / high contrast / colorblind) and persist
   const applySystemPreferences = (preferences: SystemPreferences) => {
     if (typeof document !== "undefined") {
       document.documentElement.style.fontSize = `${preferences.fontSize}%`;
-      if (preferences.highContrast) {
-        document.body.classList.add("high-contrast-mode");
-      } else {
-        document.body.classList.remove("high-contrast-mode");
-      }
-      if (preferences.darkMode) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
+      if (preferences.highContrast) document.body.classList.add("high-contrast-mode");
+      else document.body.classList.remove("high-contrast-mode");
+
+      if (preferences.darkMode) document.documentElement.classList.add("dark");
+      else document.documentElement.classList.remove("dark");
+
       document.body.classList.remove(
         "protanopia-mode",
         "deuteranopia-mode",
@@ -231,8 +272,6 @@ export function PersonalizationSettings({
         document.body.classList.add(`${preferences.colorBlindMode}-mode`);
       }
     }
-
-    // persist
     try {
       localStorage.setItem("accessibility-fontSize", preferences.fontSize.toString());
       localStorage.setItem("accessibility-highContrast", String(preferences.highContrast));
@@ -246,9 +285,7 @@ export function PersonalizationSettings({
       localStorage.setItem("notification-appointment", String(preferences.appointmentReminders));
       localStorage.setItem("notification-medication", String(preferences.medicationReminders));
       localStorage.setItem("notification-exercise", String(preferences.exerciseReminders));
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   };
 
   const handlePreferenceChange = (key: keyof SystemPreferences, value: any) => {
@@ -257,25 +294,48 @@ export function PersonalizationSettings({
     applySystemPreferences(newPreferences);
   };
 
-  // handlers
-  const handleSaveProfile = async () => {
-    // TODO: call API to save userProfile
-    console.log("保存用戶資料:", userProfile);
-    setIsEditingProfile(false);
-  };
+ // ---------------------
+// 保存健康資料
+const handleSaveHealthProfile = async () => {
+  try {
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+      alert("尚未登入，無法保存健康資料");
+      return;
+    }
 
-  const handleSaveHealthProfile = async () => {
-    // TODO: call API to save healthProfile
-    console.log("保存健康資料:", healthProfile);
+    await fetch("/api/health_info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        height: healthProfile.height,
+        weight: healthProfile.weight,
+        bloodType: healthProfile.bloodType,
+        allergies: healthProfile.allergies,
+        medications: healthProfile.medications,
+        medicalHistory: healthProfile.medicalHistory,   // 對應後端 medical_history
+        familyHistory: healthProfile.familyHistory,     // 對應後端 family_history
+        smokingStatus: healthProfile.smokingStatus,
+        alcoholConsumption: healthProfile.alcoholConsumption,
+        exerciseFrequency: healthProfile.exerciseFrequency,
+      }),
+    });
+
     setIsEditingHealth(false);
-  };
+    alert("健康資料已保存");
+  } catch (err) {
+    console.error(err);
+    alert("保存失敗");
+  }
+};
 
+  // ---------------------
   const handleChangePassword = async () => {
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       alert("新密碼與確認密碼不符");
       return;
     }
-    // TODO: call change password API
     console.log("變更密碼:", passwordData);
     setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
     setShowPasswordChange(false);
@@ -283,7 +343,6 @@ export function PersonalizationSettings({
   };
 
   const handleLogout = () => {
-    // TODO: call logout API if needed
     localStorage.clear();
     window.location.reload();
   };
@@ -328,10 +387,17 @@ export function PersonalizationSettings({
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="flex items-center space-x-4">
-                    <Avatar className="h-20 w-20">
-                      <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt="用戶頭像" />
-                      <AvatarFallback>{userProfile.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
+                    {userProfile ? (
+                      <Avatar className="h-20 w-20">
+                        <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt="用戶頭像" />
+                        <AvatarFallback>{userProfile.name?.charAt(0) ?? "?"}</AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <Avatar className="h-20 w-20">
+                        <AvatarFallback>?</AvatarFallback>
+                      </Avatar>
+                    )}
+
                     {isEditingProfile && (
                       <Button variant="outline" size="sm">
                         <Camera className="h-4 w-4 mr-2" />
@@ -368,17 +434,20 @@ export function PersonalizationSettings({
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="gender">性別</Label>
-                      <Select value={userProfile.gender} onValueChange={(value) => setUserProfile({ ...userProfile, gender: value })} disabled={!isEditingProfile}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="male">男性</SelectItem>
-                          <SelectItem value="female">女性</SelectItem>
-                          <SelectItem value="other">其他</SelectItem>
-                        </SelectContent>
+                      <Select
+                          value={userProfile.gender} // 確保 value 綁定到 userProfile.gender
+                          onValueChange={(value) => handleProfileChange('gender', value)} // 使用新增的函式
+                      >
+                          <SelectTrigger id="gender">
+                              <SelectValue placeholder="請選擇性別" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="male">男性</SelectItem>
+                              <SelectItem value="female">女性</SelectItem>
+                              <SelectItem value="other">其他</SelectItem> 
+                          </SelectContent>
                       </Select>
-                    </div>
+                  </div>
                   </div>
 
                   <div className="space-y-2">
@@ -412,7 +481,29 @@ export function PersonalizationSettings({
                       <Button variant="outline" onClick={() => setIsEditingProfile(false)}>
                         取消
                       </Button>
-                      <Button onClick={handleSaveProfile}>
+                      <Button
+                        onClick={async () => {
+                          try {
+                            const userId = localStorage.getItem("userId");
+                            if (!userId) {
+                              alert("尚未登入，無法保存個人資料");
+                              return;
+                            }
+
+                            await fetch("/api/personal_info", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ userId, ...userProfile }),
+                            });
+
+                            setIsEditingProfile(false);
+                            alert("個人資料已保存");
+                          } catch (err) {
+                            console.error(err);
+                            alert("保存失敗");
+                          }
+                        }}
+                      >
                         <Save className="h-4 w-4 mr-2" />
                         保存
                       </Button>
@@ -480,21 +571,6 @@ export function PersonalizationSettings({
                   <div className="space-y-2">
                     <Label htmlFor="medicalHistory">重要病史</Label>
                     <Textarea id="medicalHistory" value={healthProfile.medicalHistory} onChange={(e) => setHealthProfile({ ...healthProfile, medicalHistory: e.target.value })} disabled={!isEditingHealth} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>慢性疾病</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {["高血壓", "糖尿病", "高血脂", "心臟病", "腎臟病", "肝病", "甲狀腺疾病"].map((condition) => (
-                        <Badge key={condition} variant={healthProfile.chronicConditions.includes(condition) ? "default" : "outline"} className={`cursor-pointer ${!isEditingHealth ? "pointer-events-none opacity-60" : ""}`} onClick={() => {
-                          if (!isEditingHealth) return;
-                          const conditions = healthProfile.chronicConditions.includes(condition) ? healthProfile.chronicConditions.filter((c) => c !== condition) : [...healthProfile.chronicConditions, condition];
-                          setHealthProfile({ ...healthProfile, chronicConditions: conditions });
-                        }}>
-                          {condition}
-                        </Badge>
-                      ))}
-                    </div>
                   </div>
 
                   <div className="space-y-2">

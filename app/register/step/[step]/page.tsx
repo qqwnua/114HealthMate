@@ -31,10 +31,11 @@ type PersonalInfo = {
 type HealthInfo = {
   height: string
   weight: string
-  bloodType: string
+  bloodType: string // 目前改為 A+/A-/B+...
   allergies: string
   medications: string
   medicalHistory: string
+  familyHistory: string // 新增家族病史
 }
 
 export default function RegisterStep() {
@@ -59,6 +60,7 @@ export default function RegisterStep() {
     allergies: "",
     medications: "",
     medicalHistory: "",
+    familyHistory: "",
   })
 
   const handleNext = async () => {
@@ -110,6 +112,10 @@ export default function RegisterStep() {
 
   const handlePrev = () => {
     if (step > 2) setStep(step - 1)
+  }
+
+  const handleCancel = () => {
+    router.push("/") // 取消註冊直接回首頁
   }
 
   const progressText = ["Step 2：基本資料", "Step 3：健康資料"]
@@ -211,10 +217,14 @@ export default function RegisterStep() {
                     <SelectValue placeholder="選擇血型" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="A">A</SelectItem>
-                    <SelectItem value="B">B</SelectItem>
-                    <SelectItem value="AB">AB</SelectItem>
-                    <SelectItem value="O">O</SelectItem>
+                    <SelectItem value="A+">A+</SelectItem>
+                    <SelectItem value="A-">A-</SelectItem>
+                    <SelectItem value="B+">B+</SelectItem>
+                    <SelectItem value="B-">B-</SelectItem>
+                    <SelectItem value="AB+">AB+</SelectItem>
+                    <SelectItem value="AB-">AB-</SelectItem>
+                    <SelectItem value="O+">O+</SelectItem>
+                    <SelectItem value="O-">O-</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -248,12 +258,25 @@ export default function RegisterStep() {
                   }
                 />
               </div>
+              <div>
+                <Label>家族病史</Label>
+                <Input
+                  placeholder="如糖尿病、心臟病"
+                  value={healthInfo.familyHistory}
+                  onChange={(e) =>
+                    setHealthInfo({ ...healthInfo, familyHistory: e.target.value })
+                  }
+                />
+              </div>
             </div>
           )}
 
           <div className="flex justify-between mt-4">
             <Button variant="outline" onClick={handlePrev} disabled={step === 2}>
               上一步
+            </Button>
+            <Button variant="outline" onClick={handleCancel}>
+              取消
             </Button>
             <Button onClick={handleNext}>{step === 3 ? "完成" : "下一步"}</Button>
           </div>

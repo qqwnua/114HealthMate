@@ -34,9 +34,10 @@ export default function LoginPage() {
 
       if (res.ok && data.userId) {
         // 登入成功
-        router.push("/") // 或導到 dashboard
+        localStorage.setItem("userId", data.userId); // ⭐ 加這行
+        router.push("/"); // 導回首頁
       } else {
-        setError(data.error || "登入失敗")
+        setError(data.error || "登入失敗");
       }
     } catch (err) {
       console.error(err)
@@ -82,7 +83,11 @@ export default function LoginPage() {
                 onChange={e => setPassword(e.target.value)}
                 required
               />
-              <button type="button" onClick={() => setShowPassword(!showPassword)}>
+              <button 
+                type="button" 
+                onClick={() => setShowPassword(!showPassword)} 
+                aria-label={showPassword ? "隱藏密碼" : "顯示密碼"}
+              >
                 {showPassword ? <EyeOff /> : <Eye />}
               </button>
             </div>
