@@ -19,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 
 type PersonalInfo = {
   name: string
@@ -30,26 +29,18 @@ type PersonalInfo = {
 }
 
 type HealthInfo = {
-  bloodType: string
-  chronicDiseases: string[]
-  allergies: string[]
-  medications: string
-  familyHistory: string[]
   height: string
   weight: string
-}
-
-type Preferences = {
-  notifications: boolean
-  notifyMethods: string[]
-  language: string
-  consentAI: boolean
+  bloodType: string
+  allergies: string
+  medications: string
+  medicalHistory: string
 }
 
 export default function RegisterStep() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const userId = searchParams.get("userId") // 從 URL 拿 userId
+  const userId = searchParams.get("userId")
 
   const [step, setStep] = useState(2)
 
@@ -62,20 +53,12 @@ export default function RegisterStep() {
   })
 
   const [healthInfo, setHealthInfo] = useState<HealthInfo>({
-    bloodType: "",
-    chronicDiseases: [],
-    allergies: [],
-    medications: "",
-    familyHistory: [],
     height: "",
     weight: "",
-  })
-
-  const [preferences, setPreferences] = useState<Preferences>({
-    notifications: true,
-    notifyMethods: ["App"],
-    language: "zh",
-    consentAI: true,
+    bloodType: "",
+    allergies: "",
+    medications: "",
+    medicalHistory: "",
   })
 
   const handleNext = async () => {
@@ -86,7 +69,6 @@ export default function RegisterStep() {
 
     try {
       if (step === 2) {
-        // 將空字串轉 null，避免 DATE 欄位錯誤
         const payload = {
           ...personalInfo,
           userId,
@@ -119,17 +101,7 @@ export default function RegisterStep() {
         if (data.error) throw new Error(data.error)
       }
 
-      if (step === 4) {
-        const res = await fetch("/api/preferences", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...preferences, userId }),
-        })
-        const data = await res.json()
-        if (data.error) throw new Error(data.error)
-      }
-
-      if (step < 4) setStep(step + 1)
+      if (step < 3) setStep(step + 1)
       else router.push("/") // 完成導向主畫面
     } catch (err: any) {
       alert("儲存失敗：" + err.message)
@@ -140,15 +112,7 @@ export default function RegisterStep() {
     if (step > 2) setStep(step - 1)
   }
 
-  const handleSkip = () => {
-    handleNext()
-  }
-
-  const progressText = [
-    "Step 2：基本資料",
-    "Step 3：健康資料",
-    "Step 4：偏好與安全設定",
-  ]
+  const progressText = ["Step 2：基本資料", "Step 3：健康資料"]
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50 p-4">
@@ -216,6 +180,26 @@ export default function RegisterStep() {
           {step === 3 && (
             <div className="space-y-3">
               <div>
+                <Label>身高 (cm)</Label>
+                <Input
+                  value={healthInfo.height}
+                  onChange={(e) =>
+                    setHealthInfo({ ...healthInfo, height: e.target.value })
+                  }
+                  placeholder="170"
+                />
+              </div>
+              <div>
+                <Label>體重 (kg)</Label>
+                <Input
+                  value={healthInfo.weight}
+                  onChange={(e) =>
+                    setHealthInfo({ ...healthInfo, weight: e.target.value })
+                  }
+                  placeholder="65"
+                />
+              </div>
+              <div>
                 <Label>血型</Label>
                 <Select
                   value={healthInfo.bloodType}
@@ -235,35 +219,17 @@ export default function RegisterStep() {
                 </Select>
               </div>
               <div>
-                <Label>慢性疾病（多選）</Label>
-                <Input
-                  placeholder="如高血壓, 糖尿病"
-                  value={healthInfo.chronicDiseases.join(", ")}
-                  onChange={(e) =>
-                    setHealthInfo({
-                      ...healthInfo,
-                      chronicDiseases: e.target.value
-                        .split(",")
-                        .map((s) => s.trim()),
-                    })
-                  }
-                />
-              </div>
-              <div>
                 <Label>過敏史</Label>
                 <Input
                   placeholder="如花粉、藥物"
-                  value={healthInfo.allergies.join(", ")}
+                  value={healthInfo.allergies}
                   onChange={(e) =>
-                    setHealthInfo({
-                      ...healthInfo,
-                      allergies: e.target.value.split(",").map((s) => s.trim()),
-                    })
+                    setHealthInfo({ ...healthInfo, allergies: e.target.value })
                   }
                 />
               </div>
               <div>
-                <Label>服用藥物</Label>
+                <Label>目前用藥</Label>
                 <Input
                   placeholder="如高血壓藥"
                   value={healthInfo.medications}
@@ -272,44 +238,13 @@ export default function RegisterStep() {
                   }
                 />
               </div>
-            </div>
-          )}
-
-          {/* Step 4 */}
-          {step === 4 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>健康提醒通知</Label>
-                <Switch
-                  checked={preferences.notifications}
-                  onCheckedChange={(checked) =>
-                    setPreferences({ ...preferences, notifications: checked })
-                  }
-                />
-              </div>
               <div>
-                <Label>偏好語言</Label>
-                <Select
-                  value={preferences.language}
-                  onValueChange={(value) =>
-                    setPreferences({ ...preferences, language: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="選擇語言" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="zh">中文</SelectItem>
-                    <SelectItem value="en">English</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center justify-between">
-                <Label>同意 AI 使用健康資料</Label>
-                <Switch
-                  checked={preferences.consentAI}
-                  onCheckedChange={(checked) =>
-                    setPreferences({ ...preferences, consentAI: checked })
+                <Label>重要病史</Label>
+                <Input
+                  placeholder="如糖尿病、心臟病"
+                  value={healthInfo.medicalHistory}
+                  onChange={(e) =>
+                    setHealthInfo({ ...healthInfo, medicalHistory: e.target.value })
                   }
                 />
               </div>
@@ -320,12 +255,7 @@ export default function RegisterStep() {
             <Button variant="outline" onClick={handlePrev} disabled={step === 2}>
               上一步
             </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleSkip}>
-                略過
-              </Button>
-              <Button onClick={handleNext}>{step === 4 ? "完成" : "下一步"}</Button>
-            </div>
+            <Button onClick={handleNext}>{step === 3 ? "完成" : "下一步"}</Button>
           </div>
         </CardContent>
       </Card>
