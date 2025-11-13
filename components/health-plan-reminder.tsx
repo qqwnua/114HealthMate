@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -14,648 +14,425 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/hooks/use-toast"
 
+// --- 輔助函式：獲取 "YYYY-MM-DD" 格式的今天日期 ---
+const getTodayDateString = () => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+}
+
+// --- TypeScript 類型定義 ---
+interface Reminder {
+  id: number;
+  title: string;
+  description: string;
+  date: string; // "YYYY-MM-DD" 格式
+  time: string; // "HH:mm" 格式
+  type: string;
+  completed: boolean;
+  color: string;
+  notificationEnabled: boolean;
+  snoozed: boolean;
+  repeat: 'none' | 'daily' | 'weekly';
+  advance: 'none' | '5min' | '10min';
+}
+
 export function HealthPlanReminder() {
   const [activeTab, setActiveTab] = useState("today")
 
-  const [reminders, setReminders] = useState([
-    {
-      id: 1,
-      title: "有氧運動",
-      description: "30分鐘快走或騎自行車",
-      time: "18:00 - 18:30",
-      type: "exercise",
-      completed: false,
-      color: "teal",
-      notificationEnabled: true,
-      snoozed: false,
-    },
-    {
-      id: 2,
-      title: "服用維生素",
-      description: "每日維生素補充",
-      time: "08:00",
-      type: "medication",
+  // --- 從 localStorage 讀取提醒資料 (並加入預設日期) ---
+  const [reminders, setReminders] = useState<Reminder[]>(() => {
+    try {
+      const storedReminders = localStorage.getItem('healthReminders');
+      if (storedReminders) {
+        const parsed = JSON.parse(storedReminders) as any[];
+        return parsed.map(r => ({
+          ...r,
+          date: r.date || getTodayDateString(),
+          repeat: r.repeat || 'none',
+          advance: r.advance || 'none'
+        })) as Reminder[];
+      }
+    } catch (e) {
+      console.error("Failed to load reminders from localStorage", e);
+    }
+    return []; 
+  });
+
+  // --- 自動將變動存回 localStorage ---
+  useEffect(() => {
+    try {
+      localStorage.setItem('healthReminders', JSON.stringify(reminders));
+    } catch (e) {
+      console.error("Failed to save reminders to localStorage", e);
+    }
+  }, [reminders]);
+
+  const [isAddReminderOpen, setAddReminderOpen] = useState(false)
+  const [isReminderSettingsOpen, setReminderSettingsOpen] = useState(false)
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
+
+  // --- 新增提醒的邏輯 ---
+  const addReminder = (newReminder: Omit<Reminder, 'id'>) => {
+    const reminderWithId = { ...newReminder, id: Date.now() }
+    setReminders(prev => [...prev, reminderWithId])
+    toast({
+      title: "提醒已新增",
+      description: newReminder.title,
+    })
+  }
+
+  // --- 標記完成的邏輯 ---
+  const handleToggleComplete = (id: number) => {
+    setReminders(prev =>
+      prev.map(r => (r.id === id ? { ...r, completed: !r.completed } : r))
+    )
+  }
+
+  // --- 開啟「編輯/設定 Dialog」的邏輯 ---
+  const handleOpenSettings = (reminder: Reminder) => {
+    setEditingReminder({ ...reminder });
+    setReminderSettingsOpen(true);
+  }
+
+  // --- 處理「編輯 Dialog」中輸入框的變動 ---
+  const handleEditInputChange = (field: keyof Reminder, value: any) => {
+    if (!editingReminder) return;
+    setEditingReminder(prev => {
+      if (!prev) return null;
+      return { ...prev, [field]: value };
+    });
+  };
+
+  // --- 儲存「編輯 Dialog」的變更 ---
+  const handleSaveEdit = () => {
+    if (!editingReminder) return;
+    setReminders(prev => 
+      prev.map(r => (r.id === editingReminder.id ? editingReminder : r))
+    );
+    setReminderSettingsOpen(false);
+    setEditingReminder(null);
+    toast({ title: "提醒已更新" });
+  };
+  
+  // --- 根據日期重新篩選 "今日" 和 "即將到來" ---
+  const todayStr = getTodayDateString();
+  const todayReminders = reminders.filter(r => r.date === todayStr && !r.completed);
+  const upcomingReminders = reminders.filter(r => r.date !== todayStr || r.completed);
+
+  return (
+    <div className="space-y-4">
+      <CardHeader className="px-0 flex flex-row items-center justify-between">
+        <CardTitle className="text-xl text-teal-600">健康計畫提醒</CardTitle>
+        <Button onClick={() => setAddReminderOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> 新增提醒
+        </Button>
+      </CardHeader>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="today">
+            <Bell className="mr-2 h-4 w-4" />
+            今日提醒 ({todayReminders.length})
+          </TabsTrigger>
+          <TabsTrigger value="upcoming">
+            <Calendar className="mr-2 h-4 w-4" />
+            即將到來 / 已完成 ({upcomingReminders.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* --- "今日提醒" Tab 內容 --- */}
+        <TabsContent value="today" className="space-y-3">
+          {todayReminders.length > 0 ? (
+            todayReminders.map(reminder => (
+              <Card key={reminder.id} className="shadow-sm">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className={`h-8 w-8 rounded-full ${reminder.completed ? "bg-green-100" : ""}`}
+                      onClick={() => handleToggleComplete(reminder.id)}
+                    >
+                      <CheckCircle2 className={`h-5 w-5 ${reminder.completed ? "text-green-600" : "text-gray-400"}`} />
+                    </Button>
+                    <div>
+                      <h4 className="font-medium">{reminder.title}</h4>
+                      <p className="text-sm text-gray-500">{reminder.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="text-right">
+                      <span className="font-mono text-sm font-medium">{reminder.time}</span>
+                      <span className="font-mono text-xs text-gray-500 block">{reminder.date}</span>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => handleOpenSettings(reminder)}>
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <p className="text-center text-gray-500 pt-4">今天沒有提醒。</p>
+          )}
+        </TabsContent>
+
+        {/* --- "即將到來" Tab 內容 --- */}
+        <TabsContent value="upcoming" className="space-y-3">
+          {upcomingReminders.length > 0 ? (
+             upcomingReminders.map(reminder => (
+              <Card key={reminder.id} className={`shadow-sm ${reminder.completed ? "opacity-70" : ""}`}>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className={`h-8 w-8 rounded-full ${reminder.completed ? "bg-green-100" : ""}`}
+                      onClick={() => handleToggleComplete(reminder.id)}
+                    >
+                      <CheckCircle2 className={`h-5 w-5 ${reminder.completed ? "text-green-600" : "text-gray-400"}`} />
+                    </Button>
+                    <div>
+                      <h4 className={`font-medium ${reminder.completed ? "line-through" : ""}`}>{reminder.title}</h4>
+                      <p className="text-sm text-gray-500">{reminder.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="text-right">
+                      <span className="font-mono text-sm font-medium">{reminder.time}</span>
+                      <span className="font-mono text-xs text-gray-500 block">{reminder.date}</span>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => handleOpenSettings(reminder)}>
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+             <p className="text-center text-gray-500 pt-4">沒有即將到來或已完成的提醒。</p>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* --- "新增提醒" Dialog --- */}
+      <Dialog open={isAddReminderOpen} onOpenChange={setAddReminderOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新增提醒</DialogTitle>
+          </DialogHeader>
+          <AddReminderForm
+            onAdd={addReminder}
+            onClose={() => setAddReminderOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* --- "編輯/設定" Dialog --- */}
+      <Dialog open={isReminderSettingsOpen} onOpenChange={setReminderSettingsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>編輯 / 設定提醒</DialogTitle>
+          </DialogHeader>
+          {editingReminder && (
+            <div className="space-y-4 py-4">
+              
+              <div className="space-y-2">
+                <Label htmlFor="edit-title">標題</Label>
+                <Input
+                  id="edit-title"
+                  value={editingReminder.title}
+                  onChange={(e) => handleEditInputChange('title', e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-desc">描述</Label>
+                <Textarea
+                  id="edit-desc"
+                  value={editingReminder.description}
+                  onChange={(e) => handleEditInputChange('description', e.target.value)}
+                  placeholder="新增描述..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-date">日期</Label>
+                  <Input
+                    id="edit-date"
+                    type="date"
+                    value={editingReminder.date}
+                    onChange={(e) => handleEditInputChange('date', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-time">時間</Label>
+                  <Input
+                    id="edit-time"
+                    type="time"
+                    value={editingReminder.time}
+                    onChange={(e) => handleEditInputChange('time', e.target.value)}
+                  />
+                </div>
+              </div>
+              
+              <hr />
+
+              <div className="space-y-2">
+                <Label>重複提醒</Label>
+                <Select
+                  value={editingReminder.repeat}
+                  onValueChange={(value) => handleEditInputChange('repeat', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="選擇重複頻率" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">不重複</SelectItem>
+                    <SelectItem value="daily">每日重複</SelectItem>
+                    <SelectItem value="weekly">每週重複</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>提前提醒</Label>
+                <Select
+                  value={editingReminder.advance}
+                  onValueChange={(value) => handleEditInputChange('advance', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="選擇提前時間" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">準時提醒</SelectItem>
+                    <SelectItem value="5min">提前 5 分鐘</SelectItem>
+                    <SelectItem value="10min">提前 10 分鐘</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <hr />
+
+              <div className="flex items-center justify-between">
+                <Label htmlFor="edit-notification" className="flex items-center space-x-2">
+                  {editingReminder.notificationEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                  <span>開啟通知</span>
+                </Label>
+                <Switch
+                  id="edit-notification"
+                  checked={editingReminder.notificationEnabled}
+                  onCheckedChange={(checked) => handleEditInputChange('notificationEnabled', checked)}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button variant="outline" onClick={() => setReminderSettingsOpen(false)}>
+                  取消
+                </Button>
+                <Button onClick={handleSaveEdit}>
+                  儲存變更
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// --- "新增提醒" 的表單元件 ---
+function AddReminderForm({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (newReminder: Omit<Reminder, 'id'>) => void
+  onClose: () => void
+}) {
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [date, setDate] = useState(getTodayDateString())
+  const [time, setTime] = useState("")
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title || !time || !date) {
+      toast({
+        title: "缺少資訊",
+        description: "請填寫標題、日期和時間。",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    onAdd({
+      title,
+      description,
+      date,
+      time,
+      type: "general",
       completed: false,
       color: "blue",
       notificationEnabled: true,
       snoozed: false,
-    },
-    {
-      id: 3,
-      title: "喝水提醒",
-      description: "至少喝一杯水(250ml)",
-      time: "14:00",
-      type: "hydration",
-      completed: true,
-      color: "green",
-      notificationEnabled: true,
-      snoozed: false,
-    },
-    {
-      id: 4,
-      title: "冥想練習",
-      description: "10分鐘正念冥想",
-      time: "21:30",
-      type: "meditation",
-      completed: false,
-      color: "purple",
-      notificationEnabled: false,
-      snoozed: false,
-    },
-  ])
-
-  const [addReminderOpen, setAddReminderOpen] = useState(false)
-  const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false)
-  const [selectedReminder, setSelectedReminder] = useState<any>(null)
-  const [newReminder, setNewReminder] = useState({
-    title: "",
-    description: "",
-    time: "",
-    endTime: "",
-    type: "exercise",
-    repeat: "none",
-    priority: "normal",
-  })
-
-  const reminderTypes = [
-    { value: "exercise", label: "運動", color: "teal", icon: "💪" },
-    { value: "medication", label: "用藥", color: "blue", icon: "💊" },
-    { value: "hydration", label: "喝水", color: "green", icon: "💧" },
-    { value: "meditation", label: "冥想", color: "purple", icon: "🧘" },
-    { value: "meal", label: "用餐", color: "orange", icon: "🍽️" },
-    { value: "sleep", label: "睡眠", color: "indigo", icon: "😴" },
-    { value: "checkup", label: "檢查", color: "red", icon: "🏥" },
-    { value: "other", label: "其他", color: "gray", icon: "📝" },
-  ]
-
-  const handleAddReminder = () => {
-    if (!newReminder.title || !newReminder.time) return
-
-    const timeDisplay = newReminder.endTime ? `${newReminder.time} - ${newReminder.endTime}` : newReminder.time
-
-    const reminderType = reminderTypes.find((type) => type.value === newReminder.type)
-
-    const reminder = {
-      id: Date.now(),
-      title: newReminder.title,
-      description: newReminder.description,
-      time: timeDisplay,
-      type: newReminder.type,
-      completed: false,
-      color: reminderType?.color || "gray",
-      notificationEnabled: true,
-      snoozed: false,
-    }
-
-    setReminders((prev) => [...prev, reminder])
-    setNewReminder({
-      title: "",
-      description: "",
-      time: "",
-      endTime: "",
-      type: "exercise",
-      repeat: "none",
-      priority: "normal",
+      repeat: 'none',
+      advance: 'none'
     })
-    setAddReminderOpen(false)
-    toast({
-      title: "提醒已添加",
-      description: `${reminder.title} 已成功添加到您的提醒列表`,
-    })
-  }
-
-  const handleCompleteReminder = (id: number) => {
-    setReminders((prev) =>
-      prev.map((reminder) => (reminder.id === id ? { ...reminder, completed: !reminder.completed } : reminder)),
-    )
-  }
-
-  const handleBellClick = (reminder: any) => {
-    setSelectedReminder(reminder)
-    setReminderSettingsOpen(true)
-  }
-
-  const handleToggleNotification = (id: number) => {
-    setReminders((prev) =>
-      prev.map((reminder) =>
-        reminder.id === id ? { ...reminder, notificationEnabled: !reminder.notificationEnabled } : reminder,
-      ),
-    )
-
-    const reminder = reminders.find((r) => r.id === id)
-    if (reminder) {
-      toast({
-        title: reminder.notificationEnabled ? "通知已關閉" : "通知已開啟",
-        description: `${reminder.title} 的通知已${reminder.notificationEnabled ? "關閉" : "開啟"}`,
-      })
-    }
-  }
-
-  const handleSnoozeReminder = (id: number) => {
-    setReminders((prev) =>
-      prev.map((reminder) => (reminder.id === id ? { ...reminder, snoozed: !reminder.snoozed } : reminder)),
-    )
-
-    const reminder = reminders.find((r) => r.id === id)
-    if (reminder) {
-      toast({
-        title: reminder.snoozed ? "取消延遲" : "延遲提醒",
-        description: `${reminder.title} 已${reminder.snoozed ? "取消延遲" : "延遲15分鐘"}`,
-      })
-    }
+    onClose()
   }
 
   return (
-    <div className="space-y-4">
-      <CardHeader className="px-0">
-        <CardTitle className="text-xl text-teal-600">健康計畫提醒</CardTitle>
-      </CardHeader>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-3 mb-4">
-          <TabsTrigger value="today">今日提醒</TabsTrigger>
-          <TabsTrigger value="upcoming">即將到來</TabsTrigger>
-          <TabsTrigger value="settings">提醒設定</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="today">
-          <Card>
-            <CardContent className="p-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium flex items-center">
-                  <Bell className="mr-2 h-5 w-5 text-teal-600" />
-                  今日提醒
-                </h3>
-                <span className="text-sm text-gray-500">2023/05/21</span>
-              </div>
-
-              <div className="space-y-4">
-                {reminders.map((reminder) => (
-                  <div
-                    key={reminder.id}
-                    className={`border rounded-md p-4 flex items-center justify-between ${
-                      reminder.completed ? "bg-gray-50" : ""
-                    } ${reminder.snoozed ? "border-orange-200 bg-orange-50" : ""}`}
-                  >
-                    <div className="flex items-start space-x-3">
-                      <div className={`bg-${reminder.color}-100 p-2 rounded-full`}>
-                        <Calendar className={`h-5 w-5 text-${reminder.color}-600`} />
-                      </div>
-                      <div>
-                        <h4 className={`font-medium ${reminder.completed ? "line-through text-gray-500" : ""}`}>
-                          {reminder.title}
-                          {reminder.snoozed && <Badge className="ml-2 bg-orange-100 text-orange-800">已延遲</Badge>}
-                        </h4>
-                        <p className={`text-sm ${reminder.completed ? "text-gray-400" : "text-gray-500"}`}>
-                          {reminder.description}
-                        </p>
-                        <div className="flex items-center mt-1">
-                          <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                          <span className="text-xs text-gray-500">{reminder.time}</span>
-                          {!reminder.notificationEnabled && <BellOff className="h-3 w-3 text-gray-400 ml-2" />}
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      {reminder.completed ? (
-                        <Badge className="bg-green-100 text-green-800">已完成</Badge>
-                      ) : (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mr-2"
-                            onClick={() => handleCompleteReminder(reminder.id)}
-                          >
-                            <CheckCircle2 className="h-4 w-4 mr-1" />
-                            完成
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleBellClick(reminder)}>
-                            {reminder.notificationEnabled ? (
-                              <Bell className="h-4 w-4" />
-                            ) : (
-                              <BellOff className="h-4 w-4 text-gray-400" />
-                            )}
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex justify-between items-center pt-4 border-t">
-                <div>
-                  <span className="text-sm text-gray-500">
-                    今日完成: {reminders.filter((r) => r.completed).length}/{reminders.length}
-                  </span>
-                </div>
-                <Dialog open={addReminderOpen} onOpenChange={setAddReminderOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="h-4 w-4 mr-1" />
-                      添加提醒
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>添加新提醒</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="reminder-type">提醒類型</Label>
-                        <Select
-                          value={newReminder.type}
-                          onValueChange={(value) => setNewReminder((prev) => ({ ...prev, type: value }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="選擇提醒類型" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {reminderTypes.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                <span className="flex items-center">
-                                  <span className="mr-2">{type.icon}</span>
-                                  {type.label}
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="reminder-title">提醒標題</Label>
-                        <Input
-                          id="reminder-title"
-                          placeholder="例如：晨間運動"
-                          value={newReminder.title}
-                          onChange={(e) => setNewReminder((prev) => ({ ...prev, title: e.target.value }))}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="reminder-description">詳細描述</Label>
-                        <Textarea
-                          id="reminder-description"
-                          placeholder="例如：30分鐘快走或騎自行車"
-                          value={newReminder.description}
-                          onChange={(e) => setNewReminder((prev) => ({ ...prev, description: e.target.value }))}
-                          rows={2}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="start-time">開始時間</Label>
-                          <Input
-                            id="start-time"
-                            type="time"
-                            value={newReminder.time}
-                            onChange={(e) => setNewReminder((prev) => ({ ...prev, time: e.target.value }))}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="end-time">結束時間 (可選)</Label>
-                          <Input
-                            id="end-time"
-                            type="time"
-                            value={newReminder.endTime}
-                            onChange={(e) => setNewReminder((prev) => ({ ...prev, endTime: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="repeat">重複設定</Label>
-                        <Select
-                          value={newReminder.repeat}
-                          onValueChange={(value) => setNewReminder((prev) => ({ ...prev, repeat: value }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="選擇重複頻率" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">不重複</SelectItem>
-                            <SelectItem value="daily">每日</SelectItem>
-                            <SelectItem value="weekly">每週</SelectItem>
-                            <SelectItem value="weekdays">工作日</SelectItem>
-                            <SelectItem value="weekends">週末</SelectItem>
-                            <SelectItem value="custom">自訂</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="priority">優先級</Label>
-                        <Select
-                          value={newReminder.priority}
-                          onValueChange={(value) => setNewReminder((prev) => ({ ...prev, priority: value }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="選擇優先級" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="low">低</SelectItem>
-                            <SelectItem value="normal">普通</SelectItem>
-                            <SelectItem value="high">高</SelectItem>
-                            <SelectItem value="urgent">緊急</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="flex justify-end space-x-2 pt-4">
-                        <Button variant="outline" onClick={() => setAddReminderOpen(false)}>
-                          取消
-                        </Button>
-                        <Button onClick={handleAddReminder} disabled={!newReminder.title || !newReminder.time}>
-                          添加提醒
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="upcoming">
-          <Card>
-            <CardContent className="p-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium flex items-center">
-                  <Calendar className="mr-2 h-5 w-5 text-teal-600" />
-                  即將到來的提醒
-                </h3>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-medium mb-3 flex items-center">
-                    <span className="text-sm text-gray-500 mr-2">明天</span>
-                    2023/05/22
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="border rounded-md p-3 flex items-center justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="bg-teal-100 p-2 rounded-full">
-                          <Calendar className="h-4 w-4 text-teal-600" />
-                        </div>
-                        <div>
-                          <h5 className="font-medium">重量訓練</h5>
-                          <div className="flex items-center mt-1">
-                            <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                            <span className="text-xs text-gray-500">18:00 - 19:00</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Bell className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="border rounded-md p-3 flex items-center justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="bg-blue-100 p-2 rounded-full">
-                          <Calendar className="h-4 w-4 text-blue-600" />
-                        </div>
-                        <div>
-                          <h5 className="font-medium">服用維生素</h5>
-                          <div className="flex items-center mt-1">
-                            <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                            <span className="text-xs text-gray-500">08:00</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Bell className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-medium mb-3 flex items-center">
-                    <span className="text-sm text-gray-500 mr-2">後天</span>
-                    2023/05/23
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="border rounded-md p-3 flex items-center justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="bg-teal-100 p-2 rounded-full">
-                          <Calendar className="h-4 w-4 text-teal-600" />
-                        </div>
-                        <div>
-                          <h5 className="font-medium">有氧運動</h5>
-                          <div className="flex items-center mt-1">
-                            <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                            <span className="text-xs text-gray-500">18:00 - 18:30</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Bell className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="border rounded-md p-3 flex items-center justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="bg-blue-100 p-2 rounded-full">
-                          <Calendar className="h-4 w-4 text-blue-600" />
-                        </div>
-                        <div>
-                          <h5 className="font-medium">服用維生素</h5>
-                          <div className="flex items-center mt-1">
-                            <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                            <span className="text-xs text-gray-500">08:00</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Bell className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-medium mb-3 flex items-center">
-                    <span className="text-sm text-gray-500 mr-2">即將到來</span>
-                    預約與檢查
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="border rounded-md p-3 flex items-center justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="bg-amber-100 p-2 rounded-full">
-                          <Calendar className="h-4 w-4 text-amber-600" />
-                        </div>
-                        <div>
-                          <h5 className="font-medium">牙科檢查</h5>
-                          <div className="flex items-center mt-1">
-                            <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                            <span className="text-xs text-gray-500">2023/06/05 14:30</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Bell className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="border rounded-md p-3 flex items-center justify-between">
-                      <div className="flex items-start space-x-3">
-                        <div className="bg-red-100 p-2 rounded-full">
-                          <Calendar className="h-4 w-4 text-red-600" />
-                        </div>
-                        <div>
-                          <h5 className="font-medium">年度健康檢查</h5>
-                          <div className="flex items-center mt-1">
-                            <Clock className="h-3 w-3 text-gray-400 mr-1" />
-                            <span className="text-xs text-gray-500">2023/07/10 09:00</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Bell className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="settings">
-          <Card>
-            <CardContent className="p-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium flex items-center">
-                  <Settings className="mr-2 h-5 w-5 text-teal-600" />
-                  提醒設定
-                </h3>
-              </div>
-
-              <div className="space-y-6">
-                <div className="space-y-4">
-                  <h4 className="font-medium">通知偏好</h4>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="push-notifications" className="flex-1">
-                        推送通知
-                      </Label>
-                      <Switch id="push-notifications" defaultChecked />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="email-notifications" className="flex-1">
-                        電子郵件通知
-                      </Label>
-                      <Switch id="email-notifications" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="sms-notifications" className="flex-1">
-                        簡訊通知
-                      </Label>
-                      <Switch id="sms-notifications" />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="sound-notifications" className="flex-1">
-                        通知聲音
-                      </Label>
-                      <Switch id="sound-notifications" defaultChecked />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="font-medium">提醒時間設定</h4>
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>提前提醒時間</Label>
-                        <Select defaultValue="15min">
-                          <SelectTrigger>
-                            <SelectValue placeholder="選擇時間" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="5min">5分鐘前</SelectItem>
-                            <SelectItem value="15min">15分鐘前</SelectItem>
-                            <SelectItem value="30min">30分鐘前</SelectItem>
-                            <SelectItem value="1hour">1小時前</SelectItem>
-                            <SelectItem value="1day">1天前</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>重複提醒</Label>
-                        <Select defaultValue="none">
-                          <SelectTrigger>
-                            <SelectValue placeholder="選擇頻率" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">不重複</SelectItem>
-                            <SelectItem value="5min">每5分鐘</SelectItem>
-                            <SelectItem value="15min">每15分鐘</SelectItem>
-                            <SelectItem value="30min">每30分鐘</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* 提醒設定對話框 */}
-      <Dialog open={reminderSettingsOpen} onOpenChange={setReminderSettingsOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>提醒設定 - {selectedReminder?.title}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="flex items-center justify-between">
-              <Label>啟用通知</Label>
-              <Switch
-                checked={selectedReminder?.notificationEnabled}
-                onCheckedChange={() => selectedReminder && handleToggleNotification(selectedReminder.id)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label>延遲提醒</Label>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => selectedReminder && handleSnoozeReminder(selectedReminder.id)}
-              >
-                {selectedReminder?.snoozed ? "取消延遲" : "延遲15分鐘"}
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <Label>提醒音效</Label>
-              <Select defaultValue="default">
-                <SelectTrigger>
-                  <SelectValue placeholder="選擇音效" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">預設音效</SelectItem>
-                  <SelectItem value="gentle">輕柔提醒</SelectItem>
-                  <SelectItem value="urgent">緊急提醒</SelectItem>
-                  <SelectItem value="silent">靜音</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button variant="outline" onClick={() => setReminderSettingsOpen(false)}>
-                關閉
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+    <form onSubmit={handleSubmit} className="space-y-4 py-4">
+      <div className="space-y-2">
+        <Label htmlFor="new-title">標題</Label>
+        <Input
+          id="new-title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="例如：服用維生素"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="new-desc">描述 (可選)</Label>
+        <Textarea
+          id="new-desc"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="例如：每日維生素 D"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="new-date">日期</Label>
+          {/* --- [已修正] 這裡就是錯誤的地方 --- */}
+          <Input
+            id="new-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)} // 'e.gtarget' 已修正為 'e.target'
+          />
+          {/* --- [修正結束] --- */}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="new-time">時間</Label>
+          <Input
+            id="new-time"
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end space-x-2 pt-4">
+        <Button type="button" variant="outline" onClick={onClose}>
+          取消
+        </Button>
+        <Button type="submit">
+          新增
+        </Button>
+      </div>
+    </form>
   )
 }
