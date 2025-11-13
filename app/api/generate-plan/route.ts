@@ -15,7 +15,7 @@ const SYSTEM_PROMPT = '您是一位專業的 AI 健康管理師。\n' +
   '您必須嚴格依照以下的 JSON 格式回傳，不要包含 "```json" 標記：\n' +
   '{\n' +
   '  "plan": [\n' +
-  '    "一個具體且可行的建議 (string)，請使用 **Markdown** 格式化重點。",\n' +
+  '    "一個具體且可行的建議 (string)，請使用 <strong>...</strong> HTML 標籤來標示重點 (不要使用 Markdown 的 **)。\",\\n' +
   '    "第二個建議 (string)...",\n' +
   '    "第三個建議 (string)..."\n' +
   '  ],\n' +

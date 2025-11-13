@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card" // [新增] 引入 CardFooter
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   Calendar,
   Save,
+  Loader2,
 } from "lucide-react"
 // import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Line } from "recharts" // 已移除
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -62,30 +63,47 @@ interface LLMResponse {
   disclaimer: string;
 }
 
-// --- Mock Data ---
+// --- 🔴 修正 #4: 新增輔助函式 (放在元件外部或內部皆可) ---
 
-const mockHealthData: HealthData = {
-  personalInfo: {
-    name: "林先生",
-    age: 35,
-    gender: "female",
-    height: 165,
-    weight: 68,
-    bmi: 25.0,
-  },
-  healthMetrics: {
-    bloodPressure: { systolic: 125, diastolic: 82 },
-    bloodSugar: 95,
-    heartRate: 72,
-    sleepHours: 6.5,
-    stepsPerDay: 6500,
-    waterIntake: 1800,
-  },
-  healthHistory: ["高血壓", "家族糖尿病史"],
-  currentMedications: ["降血壓藥物"],
-  activityLevel: "light",
-}
+/**
+ * 根據生日字串計算年齡
+ * @param birthdate - 格式為 "YYYY-MM-DD" 的字串
+ * @returns 實際年齡 (number) 或 null
+ */
+const calculateAge = (birthdate: string): number | null => {
+  if (!birthdate) return null;
+  try {
+    const today = new Date();
+    const birthDate = new Date(birthdate);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  } catch (error) {
+    console.error("Calculate age error:", error);
+    return null;
+  }
+};
 
+/**
+ * 根據身高(cm)和體重(kg)計算 BMI
+ * @param height - 身高 (string, 單位 cm)
+ * @param weight - 體重 (string, 單位 kg)
+ * @returns BMI (string, 小數點後一位) 或 "N/A"
+ */
+const calculateBMI = (height: string, weight: string): string => {
+  const h = parseFloat(height);
+  const w = parseFloat(weight);
+  if (!h || !w || h <= 0 || w <= 0) return "N/A";
+  try {
+    const bmi = w / ((h / 100) * (h / 100));
+    return bmi.toFixed(1);
+  } catch (error) {
+    return "N/A";
+  }
+};
 
 // --- 主元件 ---
 export function HealthPlanGenerator() {
@@ -94,6 +112,10 @@ export function HealthPlanGenerator() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaveSuccessful, setIsSaveSuccessful] = useState(false)
   
+  const [isDataLoading, setIsDataLoading] = useState(true); // 頁面資料載入中
+  const [personalInfo, setPersonalInfo] = useState<any>({});
+  const [healthInfo, setHealthInfo] = useState<any>({});
+
   const [generatedPlan, setGeneratedPlan] = useState<LLMResponse>({
     plan: [],
     schedule: [],
@@ -104,6 +126,50 @@ export function HealthPlanGenerator() {
   const { messages, input, handleInputChange, handleSubmit, isLoading: isChatLoading } = useChat({
     api: "/api/health-assistant",
   })
+  
+  // --- 🔴 修正 #6: 新增 useEffect 抓取資料 ---
+  useEffect(() => {
+    const fetchData = async () => {
+      const userId = localStorage.getItem("userId");
+      if (!userId) {
+        console.warn("No userId found, cannot fetch data.");
+        setIsDataLoading(false);
+        toast({
+          title: "錯誤",
+          description: "無法獲取用戶 ID，請重新登入。",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsDataLoading(true);
+      try {
+        // 1. 抓取個人資料 (包含 name, gender, birthdate)
+        const personalRes = await fetch(`/api/personal_info?userId=${userId}`);
+        if (!personalRes.ok) throw new Error("Failed to fetch personal info");
+        const personalData = await personalRes.json();
+        setPersonalInfo(personalData);
+
+        // 2. 抓取健康資料 (包含 height, weight, medical_history, lifestyle...)
+        const healthRes = await fetch(`/api/health_info?userId=${userId}`);
+        if (!healthRes.ok) throw new Error("Failed to fetch health info");
+        const healthData = await healthRes.json();
+        setHealthInfo(healthData);
+
+      } catch (error) {
+        console.error("Failed to fetch user data:", error);
+        toast({
+          title: "資料載入失敗",
+          description: "無法從資料庫取得您的個人與健康資料。",
+          variant: "destructive",
+        });
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []); // 僅在組件掛載時執行一次
 
   // --- [已修改] 儲存排程至 localStorage ---
   const registerReminders = () => {
@@ -158,13 +224,52 @@ export function HealthPlanGenerator() {
     }
   }
 
-  // --- [保持不變] 生成計畫 ---
+  // --- 生成計畫 ---
   const generateHealthPlan = async () => {
     setIsLoading(true);
     setPlanGenerated(false);
-    setIsSaveSuccessful(false); // 重設儲存狀態
+    setIsSaveSuccessful(false); 
     
-    const healthData = mockHealthData; // 實務上這會從資料庫拉取
+    // --- 這是最關鍵的修改 ---
+    // 1. 從 state 獲取計算值
+    const age = calculateAge(personalInfo.birthdate);
+    const bmi = calculateBMI(healthInfo.height, healthInfo.weight);
+
+    // 2. 建立要傳送給 AI 的 healthDataPayload (取代 mockHealthData)
+    //    我們把資料庫抓來的 (snake_case) 欄位，整合成 AI 易讀的格式
+    const healthDataPayload = {
+      personalInfo: {
+        name: personalInfo.name || "用戶",
+        age: age || null,
+        gender: personalInfo.gender || "other", // 'male', 'female', 'other'
+        height: parseFloat(healthInfo.height) || null,
+        weight: parseFloat(healthInfo.weight) || null,
+        bmi: parseFloat(bmi) || null,
+      },
+      healthMetrics: {
+        // 依照你的要求，血壓血糖先給 null
+        bloodPressure: { systolic: null, diastolic: null },
+        bloodSugar: null,
+        // (以下欄位 AI 可選用，但你的 DB 目前沒有)
+        heartRate: null, 
+        sleepHours: null,
+        stepsPerDay: null,
+        waterIntake: null,
+      },
+      // 🔴 重點：傳入 health_info 的資料
+      lifestyle: {
+        smokingStatus: healthInfo.smoking_status || "unknown",
+        alcoholConsumption: healthInfo.alcohol_consumption || "unknown",
+        exerciseFrequency: healthInfo.exercise_frequency || "unknown",
+      },
+      // 🔴 重點：傳入 health_info 的病史
+      // (我們將 DB 的字串轉為陣列，AI 更易讀)
+      healthHistory: healthInfo.medical_history ? [healthInfo.medical_history] : [],
+      currentMedications: healthInfo.medications ? [healthInfo.medications] : [],
+      allergies: healthInfo.allergies ? [healthInfo.allergies] : [],
+      familyHistory: healthInfo.family_history ? [healthInfo.family_history] : [],
+    };
+
     const userGoal = userTextInput;
 
     try {
@@ -175,7 +280,7 @@ export function HealthPlanGenerator() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          healthData: healthData,
+          healthData: healthDataPayload,
           userGoal: userGoal,
         }),
       });
@@ -241,36 +346,50 @@ export function HealthPlanGenerator() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* 1. 健康數據概覽 */}
+            
+            {/* 1. 健康數據概覽 (🔴 已修改 🔴) */}
             <div className="bg-teal-50 p-4 rounded-lg">
               <h3 className="font-medium mb-3 flex items-center">
                 <UserCircle className="mr-2 h-4 w-4 text-teal-600" />
-                {mockHealthData.personalInfo.name} (您) 的健康數據概覽
+                {isDataLoading 
+                  ? "正在載入您的健康數據..." 
+                  : `${personalInfo.name || "您"} 的健康數據概覽`
+                }
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">年齡/性別</span>
-                  <p className="font-medium">
-                    {mockHealthData.personalInfo.age}歲 /{" "}
-                    {mockHealthData.personalInfo.gender === "female" ? "女性" : "男性"}
-                  </p>
+
+              {isDataLoading ? (
+                <div className="flex items-center justify-center h-20">
+                  <Loader2 className="h-6 w-6 text-teal-600 animate-spin" />
+                  <span className="ml-2 text-gray-500">載入中...</span>
                 </div>
-                <div>
-                  <span className="text-gray-500">BMI</span>
-                  <p className="font-medium">{mockHealthData.personalInfo.bmi}</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">年齡/性別</span>
+                    <p className="font-medium">
+                      {/* 🟢 修正：明確檢查 null，而不是用 || */}
+                      {calculateAge(personalInfo.birthdate) !== null 
+                        ? `${calculateAge(personalInfo.birthdate)}歲` 
+                        : "N/A"} /{" "}
+                      {personalInfo.gender === "female" ? "女性" 
+                       : personalInfo.gender === "male" ? "男性" 
+                       : "其他"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">BMI</span>
+                    <p className="font-medium">{calculateBMI(healthInfo.height, healthInfo.weight)}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">血壓</span>
+                    <p className="font-medium">N/A</p> {/* 依照要求顯示 null/N/A */}
+                  </div>
+                  <div>
+                    <span className="text-gray-500">血糖</span>
+                    <p className="font-medium">N/A</p> {/* 依照要求顯示 null/N/A */}
+                  </div>
                 </div>
-                <div>
-                  <span className="text-gray-500">血壓</span>
-                  <p className="font-medium">
-                    {mockHealthData.healthMetrics.bloodPressure.systolic}/
-                    {mockHealthData.healthMetrics.bloodPressure.diastolic}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-500">血糖</span>
-                  <p className="font-medium">{mockHealthData.healthMetrics.bloodSugar} mg/dL</p>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* 2. 主要目標輸入 */}
@@ -285,9 +404,10 @@ export function HealthPlanGenerator() {
                 value={userTextInput}
                 onChange={(e) => setUserTextInput(e.target.value)}
                 className="text-base p-4"
+                disabled={isDataLoading} // 🔴 載入資料時應禁止輸入
               />
               <p className="text-xs text-gray-500">
-                AI 助理將參考您的健康數據和此目標，生成個人化計畫。
+                AI 助理將參考您的健康數據 (含生活習慣、病史) 和此目標，生成個人化計畫。
               </p>
             </div>
             
@@ -295,7 +415,7 @@ export function HealthPlanGenerator() {
             <div className="flex justify-end pt-6">
               <Button
                 onClick={generateHealthPlan}
-                disabled={!userTextInput || isLoading}
+                disabled={!userTextInput || isLoading || isDataLoading} // 🔴 載入資料時應禁止
                 className="bg-teal-600 hover:bg-teal-700 w-full md:w-auto"
                 size="lg"
               >
@@ -335,7 +455,7 @@ export function HealthPlanGenerator() {
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <CheckCircle2 className="mr-2 h-5 w-5 text-green-600" />
-                  {mockHealthData.personalInfo.name} 的個人化健康計畫
+                  {personalInfo.name || "您"} 的個人化健康計畫
                 </CardTitle>
               </CardHeader>
               <CardContent>
