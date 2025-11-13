@@ -1,4 +1,7 @@
 // /app/api/personal_info/route.ts
+// ---------------- 
+// 🔴 完整修正版 🔴
+// ----------------
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 
@@ -6,7 +9,18 @@ import { pool } from "@/lib/db";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    let { userId, name, gender, birthdate, address, avatarUrl } = body;
+    
+    // 🔴 修正 #1: 接收前端 state 傳來的 camelCase 欄位
+    let { 
+      userId, 
+      name, 
+      gender, 
+      birthDate, // <--- 接收 camelCase
+      address, 
+      phone,            // <--- 新增
+      emergencyContact, // <--- 新增 (camelCase)
+      emergencyPhone    // <--- 新增 (camelCase)
+    } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
@@ -17,10 +31,12 @@ export async function POST(req: NextRequest) {
       v && v.trim() !== "" ? v.trim() : null;
 
     name = safeValue(name);
-    gender = safeValue(gender);
-    birthdate = safeValue(birthdate);
+    let birthdate = safeValue(birthDate); // 🔴 修正 #2: 將 birthDate 轉為 birthdate 變數
     address = safeValue(address);
-    avatarUrl = safeValue(avatarUrl);
+    let dbPhone = safeValue(phone); // <--- 新增
+    let dbEmergencyContact = safeValue(emergencyContact); // <--- 新增
+    let dbEmergencyPhone = safeValue(emergencyPhone); // <--- 新增
+    // avatarUrl 已移除
 
     // 🔹 gender 儲存資料庫時統一轉 M/F/O
     if (gender) {
@@ -32,18 +48,34 @@ export async function POST(req: NextRequest) {
       gender = null;
     }
 
+    // 🔴 修正 #3: 更新 SQL 查詢 (移除 avatar_url, 新增 phone, emergency_contact, emergency_phone)
     const query = `
-      INSERT INTO personal_info (user_id, name, gender, birthdate, address, avatar_url)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO personal_info (
+        user_id, name, gender, birthdate, address, 
+        phone, emergency_contact, emergency_phone
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (user_id) DO UPDATE
         SET name = EXCLUDED.name,
             gender = EXCLUDED.gender,
             birthdate = EXCLUDED.birthdate,
             address = EXCLUDED.address,
-            avatar_url = EXCLUDED.avatar_url
+            phone = EXCLUDED.phone,
+            emergency_contact = EXCLUDED.emergency_contact,
+            emergency_phone = EXCLUDED.emergency_phone
     `;
 
-    await pool.query(query, [userId, name, gender, birthdate, address, avatarUrl]);
+    // 🔴 修正 #4: 傳入正確的參數
+    await pool.query(query, [
+      userId, 
+      name, 
+      gender, 
+      birthdate, // <--- 使用轉換後的 'birthdate'
+      address, 
+      dbPhone, 
+      dbEmergencyContact, 
+      dbEmergencyPhone
+    ]);
 
     return NextResponse.json({ success: true });
   } catch (err) {
@@ -60,6 +92,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
 
+    // 🔴 修正 #5: 更新 SELECT 查詢
     const query = `
       SELECT 
         u.email,
@@ -67,7 +100,9 @@ export async function GET(req: NextRequest) {
         p.gender,
         p.birthdate,
         p.address,
-        p.avatar_url
+        p.phone,              -- <--- 新增
+        p.emergency_contact,  -- <--- 新增
+        p.emergency_phone     -- <--- 新增
       FROM users u
       LEFT JOIN personal_info p ON p.user_id = u.id
       WHERE u.id = $1
@@ -75,6 +110,11 @@ export async function GET(req: NextRequest) {
     const result = await pool.query(query, [userId]);
 
     if (result.rows.length === 0) {
+      // 即使 personal_info 沒有資料，也要回傳 users 裡的 email
+      const userResult = await pool.query("SELECT email FROM users WHERE id = $1", [userId]);
+      if (userResult.rows.length > 0) {
+        return NextResponse.json({ email: userResult.rows[0].email });
+      }
       return NextResponse.json({}, { status: 404 });
     }
 
@@ -98,13 +138,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // 🔴 修正 #6: 更新 responseData
     const responseData = {
       name: row.name ?? "",
       email: row.email ?? "",
-      avatar_url: row.avatar_url ?? "/placeholder.svg",
-      birthdate: birthdateFrontend,
+      birthdate: birthdateFrontend, // 欄位名 'birthdate' (前端 useEffect 會處理)
       gender: genderFrontend,
       address: row.address ?? "",
+      phone: row.phone ?? "",                        // <--- 新增
+      emergency_contact: row.emergency_contact ?? "", // <--- 新增
+      emergency_phone: row.emergency_phone ?? "",     // <--- 新增
     };
 
     return NextResponse.json(responseData);

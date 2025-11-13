@@ -71,7 +71,6 @@ interface UserProfile {
   name: string;
   email: string;
   phone: string;
-  avatar: string;
   birthDate: string;
   gender: string;
   address: string;
@@ -125,7 +124,6 @@ export function PersonalizationSettings({
     name: "",
     email: "",
     phone: "",
-    avatar: "/placeholder.svg",
     birthDate: "",
     gender: "",
     address: "",
@@ -192,25 +190,30 @@ useEffect(() => {
   // --- 1. 🔴 載入個人基本資料 (補回遺失的邏輯) ---
   fetch(`/api/personal_info?userId=${userId}`)
   .then(res => {
+    if (res.status === 404) return { email: "" }; // 處理 404，至少保留 email
     if (!res.ok) throw new Error(`Personal API Error, status: ${res.status}`);
     return res.json();
   })
   .then(data => {
-    if (data && Object.keys(data).length > 0) { 
+    if (data && (data.email || data.name)) { // 檢查是否有資料
         setUserProfile((prevProfile) => ({
             ...prevProfile,
             name: data.name ?? "",
             email: data.email ?? prevProfile.email,
             phone: data.phone ?? "", 
-            avatar: data.avatar_url ?? "/placeholder.svg",
+            // 🔴 修正 #3: 移除 avatar 載入
+            // avatar: data.avatar_url ?? "/placeholder.svg",
+            
             // 🔴 修正：使用 'birthDate' (駝峰式) 接收 'birthdate' (後端值)
             birthDate: data.birthdate ?? "", 
+            
             // 🔴 這是正確的，將 'male'/'female'/'other' 設給 state
             gender: data.gender ?? "", 
             address: data.address ?? "",
-            // 🔴 修正：確保載入緊急聯絡資訊 (如果後端是 emergency_contact/phone)
-            emergencyContact: data.emergencyContact ?? data.emergency_contact ?? "",
-            emergencyPhone: data.emergencyPhone ?? data.emergency_phone ?? "",
+            
+            // 🔴 修正：確保載入緊急聯絡資訊 (後端回傳 snake_case)
+            emergencyContact: data.emergency_contact ?? "",
+            emergencyPhone: data.emergency_phone ?? "",
         }));
     } else {
         // 確保沒有資料時性別也設為空值
@@ -386,25 +389,6 @@ const handleSaveHealthProfile = async () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="flex items-center space-x-4">
-                    {userProfile ? (
-                      <Avatar className="h-20 w-20">
-                        <AvatarImage src={userProfile.avatar || "/placeholder.svg"} alt="用戶頭像" />
-                        <AvatarFallback>{userProfile.name?.charAt(0) ?? "?"}</AvatarFallback>
-                      </Avatar>
-                    ) : (
-                      <Avatar className="h-20 w-20">
-                        <AvatarFallback>?</AvatarFallback>
-                      </Avatar>
-                    )}
-
-                    {isEditingProfile && (
-                      <Button variant="outline" size="sm">
-                        <Camera className="h-4 w-4 mr-2" />
-                        更換頭像
-                      </Button>
-                    )}
-                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -415,7 +399,7 @@ const handleSaveHealthProfile = async () => {
                       <Label htmlFor="email">電子郵件</Label>
                       <div className="flex items-center space-x-2">
                         <Mail className="h-4 w-4 text-gray-400" />
-                        <Input id="email" type="email" value={userProfile.email} onChange={(e) => setUserProfile({ ...userProfile, email: e.target.value })} disabled={!isEditingProfile} />
+                        <Input id="email" type="email" value={userProfile.email} disabled />
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -479,9 +463,6 @@ const handleSaveHealthProfile = async () => {
 
                   {isEditingProfile && (
                     <div className="flex justify-end space-x-2">
-                      <Button variant="outline" onClick={() => setIsEditingProfile(false)}>
-                        取消
-                      </Button>
                       <Button
                         onClick={async () => {
                           try {
@@ -623,7 +604,6 @@ const handleSaveHealthProfile = async () => {
 
                   {isEditingHealth && (
                     <div className="flex justify-end space-x-2">
-                      <Button variant="outline" onClick={() => setIsEditingHealth(false)}>取消</Button>
                       <Button onClick={handleSaveHealthProfile}><Save className="h-4 w-4 mr-2" />保存健康資料</Button>
                     </div>
                   )}
