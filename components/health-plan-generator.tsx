@@ -7,38 +7,65 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import {
   Target,
-  Clock,
   TrendingUp,
   BarChart3,
-  ListTodo,
   UserCircle,
   Activity,
-  Droplets,
-  Utensils,
-  Moon,
-  Dumbbell,
   Brain,
   Send,
   Bot,
   User,
-  Bell,
   Zap,
   CheckCircle2,
   Calendar,
-  Timer,
 } from "lucide-react"
 import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Line } from "recharts"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useChat } from "ai/react"
-import { Switch } from "@/components/ui/switch"
 
-// Mock health data from health management system
-const mockHealthData = {
+// --- TypeScript 類型定義 ---
+
+interface HealthData {
   personalInfo: {
+    name: string;
+    age: number;
+    gender: "female" | "male" | "other";
+    height: number;
+    weight: number;
+    bmi: number;
+  };
+  healthMetrics: {
+    bloodPressure: { systolic: number; diastolic: number };
+    bloodSugar: number;
+    heartRate: number;
+    sleepHours: number;
+    stepsPerDay: number;
+    waterIntake: number;
+  };
+  healthHistory: string[];
+  currentMedications: string[];
+  activityLevel: "light" | "moderate" | "active";
+}
+
+interface ScheduleItem {
+  time: string;
+  task: string;
+}
+
+interface LLMResponse {
+  plan: string[];
+  schedule: ScheduleItem[];
+  disclaimer: string;
+}
+
+// --- Mock Data ---
+
+const mockHealthData: HealthData = {
+  personalInfo: {
+    name: "林先生",
     age: 35,
     gender: "female",
     height: 165,
@@ -58,7 +85,6 @@ const mockHealthData = {
   activityLevel: "light",
 }
 
-// Progress tracking data
 const progressData = [
   { week: "第1週", weight: 68, target: 67.5, waterIntake: 85, exercise: 90, sleep: 75, bloodPressure: 125 },
   { week: "第2週", weight: 67.2, target: 67, waterIntake: 90, exercise: 85, sleep: 80, bloodPressure: 122 },
@@ -67,572 +93,215 @@ const progressData = [
   { week: "第5週", weight: 65.9, target: 65.5, waterIntake: 92, exercise: 95, sleep: 82, bloodPressure: 115 },
 ]
 
-const stageProgressData = [
-  {
-    stage: "第一階段",
-    progress: 100,
-    target: "建立基礎習慣",
-    status: "completed",
-    duration: "4週",
-    goals: ["每日喝水8杯", "每週運動3次", "規律睡眠"],
-    achievements: ["✓ 建立喝水習慣", "✓ 適應運動節奏", "✓ 改善睡眠品質"],
-  },
-  {
-    stage: "第二階段",
-    progress: 75,
-    target: "強化訓練強度",
-    status: "active",
-    duration: "4週",
-    goals: ["增加運動強度", "控制飲食熱量", "監測血壓變化"],
-    achievements: ["✓ 運動時間延長", "○ 飲食控制中", "○ 血壓穩定下降"],
-  },
-  {
-    stage: "第三階段",
-    progress: 0,
-    target: "鞏固健康成果",
-    status: "pending",
-    duration: "4週",
-    goals: ["維持目標體重", "建立長期習慣", "定期健康檢查"],
-    achievements: [],
-  },
-]
+// --- 模擬 AI 後端 API ---
+const mockApiCall = (healthData: HealthData, userGoal: string): Promise<LLMResponse> => {
+  console.log("正在將以下資料傳送至 AI API：", { healthData, userGoal })
 
+  const mockLLMResponse: LLMResponse = {
+    plan: [
+      `**建立規律的飲食習慣**：由於您有高血壓和家族糖尿病史，均衡的飲食非常重要。建議您每天固定三餐，避免暴飲暴食，同時選擇低糖、低鹽、低脂的食物。`,
+      `**增加體育活動**：規律的體育活動可以幫助您控制血壓和潛在的血糖風險。建議您每天至少进行 30 分鐘的中等強度體育活動，例如快走、騎自行車或游泳。`,
+      `**監測健康狀況**：建議您定期監測您的血壓，同時記錄您的食物攝入和體育活動，以便更好地控制您的健康狀況。`,
+      `**改善睡眠品質**：您的睡眠時間 (6.5小時) 略低於建議。嘗試建立固定的睡眠時間，睡前 1 小時放鬆，以改善睡眠。`,
+    ],
+    schedule: [
+      { time: "07:00", task: "起床量測血壓" },
+      { time: "07:10", task: "晨間運動 (快走)" },
+      { time: "08:00", task: "健康早餐 (低鹽、全麥)" },
+      { time: "12:30", task: "午餐 (多蔬菜)" },
+      { time: "18:30", task: "晚餐 (輕食、低脂)" },
+      { time: "20:00", task: "晚間伸展運動" },
+      { time: "22:00", task: "準備就寢 (放下手機)" },
+    ],
+    disclaimer: "本健康計畫僅供參考，使用者應諮詢專業醫療人員以獲得個性化的健康建議和診斷。使用者應了解，任何健康計畫都應該根據個人的具體情況和健康狀況進行制定和調整。",
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(mockLLMResponse)
+    }, 1500)
+  })
+}
+
+// --- 主元件 ---
 export function HealthPlanGenerator() {
   const [activeTab, setActiveTab] = useState("generator")
   const [planGenerated, setPlanGenerated] = useState(false)
-  const [userGoals, setUserGoals] = useState([])
-  const [targetSettings, setTargetSettings] = useState({})
-  const [generatedPlan, setGeneratedPlan] = useState(null)
-  const [assistantDialogOpen, setAssistantDialogOpen] = useState(false)
-  const [reminderSettings, setReminderSettings] = useState({
-    waterReminder: true,
-    exerciseReminder: true,
-    mealReminder: true,
-    sleepReminder: true,
-    medicationReminder: false,
+  const [userTextInput, setUserTextInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  
+  const [generatedPlan, setGeneratedPlan] = useState<LLMResponse>({
+    plan: [],
+    schedule: [],
+    disclaimer: "",
   })
-
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+  
+  const [assistantDialogOpen, setAssistantDialogOpen] = useState(false)
+  const { messages, input, handleInputChange, handleSubmit, isLoading: isChatLoading } = useChat({
     api: "/api/health-assistant",
   })
 
-  // Generate personalized health plan
-  const generateHealthPlan = () => {
-    const plan = {
-      id: Date.now(),
-      title: `${userGoals.join("+")}個人化健康計畫`,
-      goals: userGoals,
-      targetSettings: targetSettings,
-      duration: "12週",
-      stages: generatePlanStages(),
-      dailySchedule: generateDailySchedule(),
-      reminders: generateReminders(),
-      createdAt: new Date().toISOString(),
-    }
-
-    setGeneratedPlan(plan)
-    setPlanGenerated(true)
+  const registerReminders = (schedule: ScheduleItem[]) => {
+    console.log("正在為以下排程註冊提醒：", schedule)
   }
 
-  const generatePlanStages = () => {
-    const stages = [
-      {
-        id: 1,
-        name: "適應建立期",
-        duration: "4週",
-        description: "建立基礎健康習慣，適應新的生活節奏",
-        goals: generateStageGoals(1),
-        tasks: generateStageTasks(1),
-        milestones: ["建立規律作息", "適應運動強度", "養成健康飲食習慣"],
-      },
-      {
-        id: 2,
-        name: "強化提升期",
-        duration: "4週",
-        description: "增強訓練強度，優化健康指標",
-        goals: generateStageGoals(2),
-        tasks: generateStageTasks(2),
-        milestones: ["提升運動表現", "改善生理指標", "強化自律能力"],
-      },
-      {
-        id: 3,
-        name: "鞏固維持期",
-        duration: "4週",
-        description: "鞏固健康成果，建立長期維持機制",
-        goals: generateStageGoals(3),
-        tasks: generateStageTasks(3),
-        milestones: ["達成目標指標", "建立長期習慣", "制定維持計畫"],
-      },
-    ]
+  const generateHealthPlan = async () => {
+    setIsLoading(true)
+    setPlanGenerated(false) // 點擊生成時，先清除舊結果
+    const healthData = mockHealthData
+    const userGoal = userTextInput
 
-    return stages
+    try {
+      const parsedResult = await mockApiCall(healthData, userGoal)
+      setGeneratedPlan(parsedResult)
+      setPlanGenerated(true) // 標記為已生成
+    } catch (error) {
+      console.error("生成計畫失敗:", error)
+    } finally {
+      setIsLoading(false) // 無論成功失敗，都結束 loading
+    }
   }
 
-  const generateStageGoals = (stage) => {
-    const baseGoals = []
-
-    if (userGoals.includes("減重")) {
-      const weightLoss = stage === 1 ? 1.5 : stage === 2 ? 2 : 1.5
-      baseGoals.push(`減重${weightLoss}公斤`)
-    }
-
-    if (userGoals.includes("控糖")) {
-      baseGoals.push(stage === 1 ? "穩定血糖波動" : stage === 2 ? "降低平均血糖" : "維持血糖正常")
-    }
-
-    if (userGoals.includes("降血壓")) {
-      baseGoals.push(stage === 1 ? "血壓下降5mmHg" : stage === 2 ? "血壓下降10mmHg" : "維持血壓正常")
-    }
-
-    if (userGoals.includes("增肌")) {
-      baseGoals.push(stage === 1 ? "建立肌力基礎" : stage === 2 ? "增加肌肉量" : "維持肌肉質量")
-    }
-
-    return baseGoals
-  }
-
-  const generateStageTasks = (stage) => {
-    const tasks = []
-
-    // 基礎任務
-    tasks.push(
-      {
-        id: `water-${stage}`,
-        name: "每日飲水",
-        type: "hydration",
-        target: stage === 1 ? 6 : 8,
-        unit: "杯",
-        frequency: "daily",
-        icon: <Droplets className="h-4 w-4" />,
-        color: "blue",
-        priority: "high",
-      },
-      {
-        id: `sleep-${stage}`,
-        name: "充足睡眠",
-        type: "sleep",
-        target: 8,
-        unit: "小時",
-        frequency: "daily",
-        icon: <Moon className="h-4 w-4" />,
-        color: "purple",
-        priority: "high",
-      },
-    )
-
-    // 根據目標添加特定任務
-    if (userGoals.includes("減重") || userGoals.includes("降血壓")) {
-      tasks.push({
-        id: `cardio-${stage}`,
-        name: "有氧運動",
-        type: "exercise",
-        target: stage === 1 ? 20 : stage === 2 ? 30 : 30,
-        unit: "分鐘",
-        frequency: "daily",
-        icon: <Activity className="h-4 w-4" />,
-        color: "green",
-        priority: "high",
-      })
-    }
-
-    if (userGoals.includes("增肌")) {
-      tasks.push({
-        id: `strength-${stage}`,
-        name: "肌力訓練",
-        type: "strength",
-        target: stage === 1 ? 15 : stage === 2 ? 25 : 30,
-        unit: "分鐘",
-        frequency: "3x/week",
-        icon: <Dumbbell className="h-4 w-4" />,
-        color: "red",
-        priority: "medium",
-      })
-    }
-
-    if (userGoals.includes("控糖")) {
-      tasks.push({
-        id: `nutrition-${stage}`,
-        name: "血糖友善飲食",
-        type: "nutrition",
-        target: 3,
-        unit: "餐",
-        frequency: "daily",
-        icon: <Utensils className="h-4 w-4" />,
-        color: "orange",
-        priority: "high",
-      })
-    }
-
-    return tasks
-  }
-
-  const generateDailySchedule = () => {
-    const schedule = {
-      morning: [
-        { time: "06:30", task: "起床喝水", duration: "5分鐘", type: "hydration" },
-        { time: "07:00", task: "晨間運動", duration: "30分鐘", type: "exercise" },
-        { time: "08:00", task: "健康早餐", duration: "30分鐘", type: "nutrition" },
-      ],
-      afternoon: [
-        { time: "12:00", task: "午餐", duration: "45分鐘", type: "nutrition" },
-        { time: "14:00", task: "補充水分", duration: "5分鐘", type: "hydration" },
-        { time: "16:00", task: "健康點心", duration: "15分鐘", type: "nutrition" },
-      ],
-      evening: [
-        { time: "18:30", task: "晚餐", duration: "45分鐘", type: "nutrition" },
-        { time: "20:00", task: "晚間運動", duration: "25分鐘", type: "exercise" },
-        { time: "22:00", task: "準備就寢", duration: "30分鐘", type: "sleep" },
-      ],
-    }
-
-    return schedule
-  }
-
-  const generateReminders = () => {
-    const reminders = []
-
-    if (reminderSettings.waterReminder) {
-      reminders.push(
-        { time: "08:00", message: "記得喝第一杯水！", type: "hydration" },
-        { time: "10:00", message: "該補充水分了", type: "hydration" },
-        { time: "14:00", message: "下午記得喝水", type: "hydration" },
-        { time: "16:00", message: "再喝一杯水吧", type: "hydration" },
-        { time: "18:00", message: "晚餐前喝杯水", type: "hydration" },
-      )
-    }
-
-    if (reminderSettings.exerciseReminder) {
-      reminders.push(
-        { time: "07:00", message: "開始今天的晨間運動！", type: "exercise" },
-        { time: "20:00", message: "該進行晚間運動了", type: "exercise" },
-      )
-    }
-
-    if (reminderSettings.mealReminder) {
-      reminders.push(
-        { time: "08:00", message: "享用健康早餐", type: "nutrition" },
-        { time: "12:00", message: "午餐時間到了", type: "nutrition" },
-        { time: "18:30", message: "準備健康晚餐", type: "nutrition" },
-      )
-    }
-
-    if (reminderSettings.sleepReminder) {
-      reminders.push(
-        { time: "21:30", message: "準備放鬆，即將就寢", type: "sleep" },
-        { time: "22:00", message: "該上床睡覺了", type: "sleep" },
-      )
-    }
-
-    return reminders
-  }
-
+  // --- [已修改] 「計畫生成」介面 ---
+  // 現在輸入框和結果會顯示在同一個頁面
   const renderHealthPlanGenerator = () => (
     <div className="space-y-6">
-      {!planGenerated ? (
+      {/* 區塊 1: 輸入卡片 (始終顯示) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Zap className="mr-2 h-5 w-5 text-teal-600" />
+            智能健康計畫生成
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* 1. 健康數據概覽 */}
+          <div className="bg-teal-50 p-4 rounded-lg">
+            <h3 className="font-medium mb-3 flex items-center">
+              <UserCircle className="mr-2 h-4 w-4 text-teal-600" />
+              {mockHealthData.personalInfo.name} (您) 的健康數據概覽
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">年齡/性別</span>
+                <p className="font-medium">
+                  {mockHealthData.personalInfo.age}歲 /{" "}
+                  {mockHealthData.personalInfo.gender === "female" ? "女性" : "男性"}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500">BMI</span>
+                <p className="font-medium">{mockHealthData.personalInfo.bmi}</p>
+              </div>
+              <div>
+                <span className="text-gray-500">血壓</span>
+                <p className="font-medium">
+                  {mockHealthData.healthMetrics.bloodPressure.systolic}/
+                  {mockHealthData.healthMetrics.bloodPressure.diastolic}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500">血糖</span>
+                <p className="font-medium">{mockHealthData.healthMetrics.bloodSugar} mg/dL</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. 主要目標輸入 */}
+          <div className="space-y-3">
+            <Label htmlFor="userGoalInput" className="text-lg font-medium flex items-center">
+              <Target className="mr-2 h-5 w-5 text-teal-600" />
+              請輸入您的主要健康目標
+            </Label>
+            <Input
+              id="userGoalInput"
+              placeholder="例如：我想在3個月內減重5公斤、改善睡眠品質、並降低血壓"
+              value={userTextInput}
+              onChange={(e) => setUserTextInput(e.target.value)}
+              className="text-base p-4"
+            />
+            <p className="text-xs text-gray-500">
+              AI 助理將參考您的健康數據和此目標，生成個人化計畫。
+            </p>
+          </div>
+          
+          {/* 3. 生成按鈕 */}
+          <div className="flex justify-end pt-6">
+            <Button
+              onClick={generateHealthPlan}
+              disabled={!userTextInput || isLoading}
+              className="bg-teal-600 hover:bg-teal-700 w-full md:w-auto"
+              size="lg"
+            >
+              {isLoading ? (
+                <>
+                  <Activity className="mr-2 h-4 w-4 animate-pulse" />
+                  AI 正在為您生成計畫...
+                </>
+              ) : (
+                <>
+                  <Zap className="mr-2 h-4 w-4" />
+                  生成個人化健康計畫
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 區塊 2: 生成中提示 (僅 isLoading 時顯示) */}
+      {isLoading && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Zap className="mr-2 h-5 w-5 text-teal-600" />
-              智能健康計畫生成
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* 從健康管理系統獲取的數據展示 */}
-            <div className="bg-teal-50 p-4 rounded-lg">
-              <h3 className="font-medium mb-3 flex items-center">
-                <UserCircle className="mr-2 h-4 w-4 text-teal-600" />
-                您的健康數據概覽
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">年齡/性別</span>
-                  <p className="font-medium">
-                    {mockHealthData.personalInfo.age}歲 /{" "}
-                    {mockHealthData.personalInfo.gender === "female" ? "女性" : "男性"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-500">BMI</span>
-                  <p className="font-medium">{mockHealthData.personalInfo.bmi}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">血壓</span>
-                  <p className="font-medium">
-                    {mockHealthData.healthMetrics.bloodPressure.systolic}/
-                    {mockHealthData.healthMetrics.bloodPressure.diastolic}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-500">血糖</span>
-                  <p className="font-medium">{mockHealthData.healthMetrics.bloodSugar} mg/dL</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 健康目標選擇 */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center">
-                <Target className="mr-2 h-5 w-5 text-teal-600" />
-                選擇您的健康目標
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {[
-                  {
-                    id: "減重",
-                    label: "減重",
-                    desc: "降低體重和BMI",
-                    recommended: mockHealthData.personalInfo.bmi > 24,
-                  },
-                  {
-                    id: "控糖",
-                    label: "血糖控制",
-                    desc: "穩定血糖水平",
-                    recommended: mockHealthData.healthHistory.includes("家族糖尿病史"),
-                  },
-                  {
-                    id: "降血壓",
-                    label: "降血壓",
-                    desc: "改善心血管健康",
-                    recommended: mockHealthData.healthMetrics.bloodPressure.systolic > 120,
-                  },
-                  { id: "增肌", label: "增肌塑形", desc: "增加肌肉量", recommended: false },
-                  {
-                    id: "改善睡眠",
-                    label: "改善睡眠",
-                    desc: "提升睡眠品質",
-                    recommended: mockHealthData.healthMetrics.sleepHours < 7,
-                  },
-                  {
-                    id: "增強體能",
-                    label: "增強體能",
-                    desc: "提升運動表現",
-                    recommended: mockHealthData.healthMetrics.stepsPerDay < 8000,
-                  },
-                ].map((goal) => (
-                  <div key={goal.id} className="relative">
-                    <div
-                      className={`border rounded-lg p-3 cursor-pointer transition-all ${
-                        userGoals.includes(goal.id)
-                          ? "border-teal-500 bg-teal-50"
-                          : "border-gray-200 hover:border-teal-300"
-                      }`}
-                      onClick={() => {
-                        if (userGoals.includes(goal.id)) {
-                          setUserGoals(userGoals.filter((g) => g !== goal.id))
-                        } else {
-                          setUserGoals([...userGoals, goal.id])
-                        }
-                      }}
-                    >
-                      {goal.recommended && (
-                        <Badge className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs">推薦</Badge>
-                      )}
-                      <h4 className="font-medium">{goal.label}</h4>
-                      <p className="text-xs text-gray-500 mt-1">{goal.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 目標設定 */}
-            {userGoals.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">目標設定</h3>
-                <div className="space-y-4">
-                  {userGoals.includes("減重") && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>目標體重 (kg)</Label>
-                        <Input
-                          type="number"
-                          placeholder="例如: 60"
-                          value={targetSettings.targetWeight || ""}
-                          onChange={(e) => setTargetSettings({ ...targetSettings, targetWeight: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>達成時間</Label>
-                        <Select
-                          value={targetSettings.timeframe || ""}
-                          onValueChange={(value) => setTargetSettings({ ...targetSettings, timeframe: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="選擇時間" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="3months">3個月</SelectItem>
-                            <SelectItem value="6months">6個月</SelectItem>
-                            <SelectItem value="1year">1年</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
-
-                  {userGoals.includes("降血壓") && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>目標收縮壓 (mmHg)</Label>
-                        <Input
-                          type="number"
-                          placeholder="例如: 120"
-                          value={targetSettings.targetSystolic || ""}
-                          onChange={(e) => setTargetSettings({ ...targetSettings, targetSystolic: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>目標舒張壓 (mmHg)</Label>
-                        <Input
-                          type="number"
-                          placeholder="例如: 80"
-                          value={targetSettings.targetDiastolic || ""}
-                          onChange={(e) => setTargetSettings({ ...targetSettings, targetDiastolic: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {userGoals.includes("控糖") && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>目標空腹血糖 (mg/dL)</Label>
-                        <Input
-                          type="number"
-                          placeholder="例如: 90"
-                          value={targetSettings.targetBloodSugar || ""}
-                          onChange={(e) => setTargetSettings({ ...targetSettings, targetBloodSugar: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>目標糖化血色素 (%)</Label>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="例如: 5.5"
-                          value={targetSettings.targetHbA1c || ""}
-                          onChange={(e) => setTargetSettings({ ...targetSettings, targetHbA1c: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 提醒設定 */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center">
-                <Bell className="mr-2 h-5 w-5 text-teal-600" />
-                健康提醒設定
-              </h3>
-              <div className="space-y-3">
-                {[
-                  { key: "waterReminder", label: "喝水提醒", desc: "定時提醒補充水分" },
-                  { key: "exerciseReminder", label: "運動提醒", desc: "提醒進行運動" },
-                  { key: "mealReminder", label: "用餐提醒", desc: "提醒用餐時間" },
-                  { key: "sleepReminder", label: "睡眠提醒", desc: "提醒就寢時間" },
-                  { key: "medicationReminder", label: "用藥提醒", desc: "提醒服藥時間" },
-                ].map((reminder) => (
-                  <div key={reminder.key} className="flex items-center justify-between">
-                    <div>
-                      <Label className="font-medium">{reminder.label}</Label>
-                      <p className="text-sm text-gray-500">{reminder.desc}</p>
-                    </div>
-                    <Switch
-                      checked={reminderSettings[reminder.key]}
-                      onCheckedChange={(checked) =>
-                        setReminderSettings({ ...reminderSettings, [reminder.key]: checked })
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-6">
-              <Button
-                onClick={generateHealthPlan}
-                disabled={userGoals.length === 0}
-                className="bg-teal-600 hover:bg-teal-700"
-              >
-                <Zap className="mr-2 h-4 w-4" />
-                生成個人化健康計畫
-              </Button>
+          <CardContent className="p-6 text-center">
+            <div className="flex justify-center items-center text-teal-600">
+              <Activity className="mr-2 h-5 w-5 animate-pulse" />
+              <span className="text-lg font-medium">AI 正在為您生成計畫，請稍候...</span>
             </div>
           </CardContent>
         </Card>
-      ) : (
+      )}
+
+      {/* 區塊 3: 結果卡片 (僅 planGenerated 且 !isLoading 時顯示) */}
+      {/* 為了有淡入效果，您可以添加一個簡單的 CSS 動畫 (例如 animate-fadeIn) */}
+      {planGenerated && !isLoading && (
         <div className="space-y-6">
-          {/* 計畫概覽 */}
+          {/* 1. 計畫建議 */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center">
-                  <CheckCircle2 className="mr-2 h-5 w-5 text-green-600" />
-                  計畫生成成功
-                </span>
-                <Badge className="bg-teal-100 text-teal-800">{generatedPlan?.title}</Badge>
+              <CardTitle className="flex items-center">
+                <CheckCircle2 className="mr-2 h-5 w-5 text-green-600" />
+                {mockHealthData.personalInfo.name} 的個人化健康計畫
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="bg-green-50 p-4 rounded-lg">
-                <h3 className="font-medium mb-2">您的個人化健康計畫已準備就緒！</h3>
-                <p className="text-sm text-gray-700 mb-3">
-                  基於您的健康數據和目標，我們為您制定了為期{generatedPlan?.duration}的分階段健康計畫。
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {generatedPlan?.stages.map((stage, index) => (
-                    <div key={stage.id} className="bg-white p-3 rounded border">
-                      <h4 className="font-medium text-sm">{stage.name}</h4>
-                      <p className="text-xs text-gray-500">{stage.duration}</p>
-                      <p className="text-xs mt-1">{stage.description}</p>
-                    </div>
+                <h3 className="font-medium mb-2">
+                  您好！根據您的數據和目標，以下是 3-5 點具體建議：
+                </h3>
+                <ul className="list-disc pl-5 space-y-2 text-gray-700">
+                  {generatedPlan.plan.map((item, index) => (
+                    <li key={index} dangerouslySetInnerHTML={{ __html: item }} />
                   ))}
-                </div>
+                </ul>
               </div>
             </CardContent>
           </Card>
 
-          {/* 計畫排程建議 */}
+          {/* 2. 計畫排程建議 */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Calendar className="mr-2 h-5 w-5 text-teal-600" />
-                計畫排程建議
+                建議每日排程
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                {Object.entries(generatedPlan?.dailySchedule || {}).map(([period, tasks]) => (
-                  <div key={period} className="space-y-3">
-                    <h4 className="font-medium capitalize flex items-center">
-                      <Clock className="mr-2 h-4 w-4 text-gray-400" />
-                      {period === "morning" ? "早晨時段" : period === "afternoon" ? "下午時段" : "晚上時段"}
-                    </h4>
-                    <div className="grid gap-2">
-                      {tasks.map((task, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 border rounded-md bg-gray-50">
-                          <div className="flex items-center space-x-3">
-                            <span className="font-mono text-sm text-teal-600">{task.time}</span>
-                            <span>{task.task}</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="outline">{task.duration}</Badge>
-                            <Badge variant="secondary" className="text-xs">
-                              {task.type === "hydration"
-                                ? "💧"
-                                : task.type === "exercise"
-                                  ? "🏃"
-                                  : task.type === "nutrition"
-                                    ? "🥗"
-                                    : task.type === "sleep"
-                                      ? "😴"
-                                      : "📋"}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
+              <div className="space-y-2">
+                {generatedPlan.schedule.map((task, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 border rounded-md bg-gray-50">
+                    <div className="flex items-center space-x-3">
+                      <span className="font-mono text-sm text-teal-600">{task.time}</span>
+                      <span className="font-medium">{task.task}</span>
                     </div>
                   </div>
                 ))}
@@ -640,147 +309,23 @@ export function HealthPlanGenerator() {
             </CardContent>
           </Card>
 
-          {/* 健康提醒設定 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Bell className="mr-2 h-5 w-5 text-teal-600" />
-                健康計畫提醒
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <p className="text-sm text-gray-600">
-                  已為您設定 {generatedPlan?.reminders?.length || 0} 個每日提醒，幫助您保持計畫執行。
-                </p>
-                <div className="grid gap-2 max-h-60 overflow-y-auto">
-                  {generatedPlan?.reminders?.map((reminder, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 border rounded text-sm">
-                      <div className="flex items-center space-x-2">
-                        <Timer className="h-4 w-4 text-gray-400" />
-                        <span className="font-mono">{reminder.time}</span>
-                        <span>{reminder.message}</span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {reminder.type === "hydration"
-                          ? "💧"
-                          : reminder.type === "exercise"
-                            ? "🏃"
-                            : reminder.type === "nutrition"
-                              ? "🥗"
-                              : reminder.type === "sleep"
-                                ? "😴"
-                                : "📋"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex justify-center">
-            <Button onClick={() => setActiveTab("tracking")} className="bg-teal-600 hover:bg-teal-700">
-              開始執行計畫
-            </Button>
+          {/* 3. 免責聲明 */}
+          <div className="text-xs text-gray-500 p-4 bg-gray-50 rounded-lg">
+            <strong>免責聲明：</strong>{generatedPlan.disclaimer}
           </div>
+          
+          {/* [已移除] 之前用於跳轉的按鈕已不再需要 */}
+          {/* <div className="flex justify-center"> ... </div> */}
         </div>
       )}
     </div>
   )
 
+  // --- 「計畫進度追蹤」介面 (保持不變，已簡化) ---
   const renderProgressTracking = () => (
     <div className="space-y-6">
-      {/* 整體進度概覽 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <BarChart3 className="mr-2 h-5 w-5 text-teal-600" />
-              執行進度概覽
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {/* 階段進度 */}
-              <div className="space-y-4">
-                <h4 className="font-medium">階段完成狀況</h4>
-                {stageProgressData.map((stage, index) => (
-                  <div key={index} className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center space-x-3">
-                        <span className="font-medium">{stage.stage}</span>
-                        <Badge
-                          variant={
-                            stage.status === "completed"
-                              ? "default"
-                              : stage.status === "active"
-                                ? "secondary"
-                                : "outline"
-                          }
-                          className={
-                            stage.status === "completed"
-                              ? "bg-green-100 text-green-800"
-                              : stage.status === "active"
-                                ? "bg-blue-100 text-blue-800"
-                                : ""
-                          }
-                        >
-                          {stage.status === "completed" ? "已完成" : stage.status === "active" ? "進行中" : "待開始"}
-                        </Badge>
-                      </div>
-                      <span className="text-sm text-gray-500">{stage.progress}%</span>
-                    </div>
-                    <Progress value={stage.progress} className="h-3" />
-                    <div className="text-sm text-gray-600">
-                      <p className="font-medium">{stage.target}</p>
-                      <div className="mt-1 space-y-1">
-                        {stage.achievements.map((achievement, i) => (
-                          <p key={i} className="text-xs">
-                            {achievement}
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 今日任務狀態 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <ListTodo className="mr-2 h-5 w-5 text-teal-600" />
-              今日任務狀態
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[
-                { task: "喝水", completed: 6, target: 8, unit: "杯", color: "blue" },
-                { task: "有氧運動", completed: 25, target: 30, unit: "分鐘", color: "green" },
-                { task: "睡眠", completed: 7, target: 8, unit: "小時", color: "purple" },
-                { task: "健康飲食", completed: 2, target: 3, unit: "餐", color: "orange" },
-              ].map((task, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium text-sm">{task.task}</span>
-                    <span className="text-xs text-gray-500">
-                      {task.completed}/{task.target} {task.unit}
-                    </span>
-                  </div>
-                  <Progress value={(task.completed / task.target) * 100} className="h-2" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 生理數據變化趨勢 */}
+      
+      {/* 生理數據變化趨勢 (核心功能) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -889,7 +434,7 @@ export function HealthPlanGenerator() {
         </CardContent>
       </Card>
 
-      {/* 智能助理按鈕 */}
+      {/* 智能助理按鈕 (保持不變) */}
       <div className="fixed bottom-6 right-6">
         <Dialog open={assistantDialogOpen} onOpenChange={setAssistantDialogOpen}>
           <DialogTrigger asChild>
@@ -952,7 +497,7 @@ export function HealthPlanGenerator() {
                   </div>
                 ))}
 
-                {isLoading && (
+                {isChatLoading && (
                   <div className="flex justify-start">
                     <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100">
                       <div className="flex items-center space-x-2">
@@ -975,7 +520,7 @@ export function HealthPlanGenerator() {
                   placeholder="描述您的執行狀況、身體反應或需要調整的地方..."
                   className="flex-1"
                 />
-                <Button type="submit" disabled={isLoading || !input}>
+                <Button type="submit" disabled={isChatLoading || !input}>
                   <Send className="h-4 w-4" />
                 </Button>
               </form>
@@ -986,6 +531,7 @@ export function HealthPlanGenerator() {
     </div>
   )
 
+  // --- 主佈局 (保持不變) ---
   return (
     <div className="space-y-4">
       <CardHeader className="px-0">
