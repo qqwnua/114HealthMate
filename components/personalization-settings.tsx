@@ -435,17 +435,18 @@ const handleSaveHealthProfile = async () => {
                     <div className="space-y-2">
                       <Label htmlFor="gender">性別</Label>
                       <Select
-                          value={userProfile.gender} // 確保 value 綁定到 userProfile.gender
-                          onValueChange={(value) => handleProfileChange('gender', value)} // 使用新增的函式
+                        value={userProfile.gender}
+                        onValueChange={(value) => handleProfileChange('gender', value)}
+                        disabled={!isEditingProfile}
                       >
-                          <SelectTrigger id="gender">
-                              <SelectValue placeholder="請選擇性別" />
-                          </SelectTrigger>
-                          <SelectContent>
-                              <SelectItem value="male">男性</SelectItem>
-                              <SelectItem value="female">女性</SelectItem>
-                              <SelectItem value="other">其他</SelectItem> 
-                          </SelectContent>
+                        <SelectTrigger id="gender" disabled={!isEditingProfile}>
+                          <SelectValue placeholder="請選擇性別" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="male">男性</SelectItem>
+                          <SelectItem value="female">女性</SelectItem>
+                          <SelectItem value="other">其他</SelectItem>
+                        </SelectContent>
                       </Select>
                   </div>
                   </div>
