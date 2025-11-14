@@ -270,7 +270,7 @@ export function MedicalConsultation() {
   const suggestedQuestions = [
     "我最近頭痛很嚴重，可能是什麼原因？",
     "高血壓患者的飲食建議",
-    "如何改善睡眠質量？",
+    "如何改善睡眠品質？",
     "運動後肌肉酸痛如何緩解？",
   ]
 
