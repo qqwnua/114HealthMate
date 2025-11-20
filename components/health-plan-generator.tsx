@@ -1,15 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card" // [新增] 引入 CardFooter
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-// import { Progress } from "@/components/ui/progress" // 已移除
-// import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs" // 已移除
 import { Badge } from "@/components/ui/badge"
 import {
-  // [新增] 引入 Save
   Target,
   UserCircle,
   Activity,
@@ -23,10 +20,10 @@ import {
   Save,
   Loader2,
 } from "lucide-react"
-// import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Line } from "recharts" // 已移除
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+// 如果您的環境沒有安裝 ai/react，這一行可能會報錯。如果報錯，請暫時註解掉並移除下方的 useChat 相關程式碼
 import { useChat } from "ai/react"
-import { toast } from "@/hooks/use-toast" // [新增] 引入 toast
+import { toast } from "@/hooks/use-toast"
 
 // --- TypeScript 類型定義 ---
 
@@ -63,13 +60,8 @@ interface LLMResponse {
   disclaimer: string;
 }
 
-// --- 🔴 修正 #4: 新增輔助函式 (放在元件外部或內部皆可) ---
+// --- 輔助函式 ---
 
-/**
- * 根據生日字串計算年齡
- * @param birthdate - 格式為 "YYYY-MM-DD" 的字串
- * @returns 實際年齡 (number) 或 null
- */
 const calculateAge = (birthdate: string): number | null => {
   if (!birthdate) return null;
   try {
@@ -87,12 +79,6 @@ const calculateAge = (birthdate: string): number | null => {
   }
 };
 
-/**
- * 根據身高(cm)和體重(kg)計算 BMI
- * @param height - 身高 (string, 單位 cm)
- * @param weight - 體重 (string, 單位 kg)
- * @returns BMI (string, 小數點後一位) 或 "N/A"
- */
 const calculateBMI = (height: string, weight: string): string => {
   const h = parseFloat(height);
   const w = parseFloat(weight);
@@ -109,12 +95,14 @@ const calculateBMI = (height: string, weight: string): string => {
 export function HealthPlanGenerator() {
   const [planGenerated, setPlanGenerated] = useState(false)
   const [userTextInput, setUserTextInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSaveSuccessful, setIsSaveSuccessful] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // AI 生成中
   
   const [isDataLoading, setIsDataLoading] = useState(true); // 頁面資料載入中
   const [personalInfo, setPersonalInfo] = useState<any>({});
   const [healthInfo, setHealthInfo] = useState<any>({});
+  
+  const [isSaving, setIsSaving] = useState(false); // [新增] 儲存至 DB 中
+  const [isSaveSuccessful, setIsSaveSuccessful] = useState(false); // 儲存按鈕的 "已儲存" 狀態
 
   const [generatedPlan, setGeneratedPlan] = useState<LLMResponse>({
     plan: [],
@@ -123,104 +111,113 @@ export function HealthPlanGenerator() {
   })
   
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false)
+  
+  // 使用 Vercel AI SDK 的 hook
   const { messages, input, handleInputChange, handleSubmit, isLoading: isChatLoading } = useChat({
     api: "/api/health-assistant",
+    onError: (err) => {
+      console.error("Chat Error:", err);
+      // 這裡不顯示 toast 以免干擾主流程，僅記錄錯誤
+    }
   })
   
-  // --- 🔴 修正 #6: 新增 useEffect 抓取資料 ---
+  // --- useEffect 抓取資料 ---
   useEffect(() => {
     const fetchData = async () => {
       const userId = localStorage.getItem("userId");
       if (!userId) {
         console.warn("No userId found, cannot fetch data.");
         setIsDataLoading(false);
-        toast({
-          title: "錯誤",
-          description: "無法獲取用戶 ID，請重新登入。",
-          variant: "destructive",
-        });
+        // 如果沒有登入，可以選擇導向或僅提示
+        // toast({
+        //   title: "提示",
+        //   description: "您目前為訪客模式，無法自動帶入健康數據。",
+        // });
         return;
       }
 
       setIsDataLoading(true);
       try {
-        // 1. 抓取個人資料 (包含 name, gender, birthdate)
+        // 1. 抓取個人資料
         const personalRes = await fetch(`/api/personal_info?userId=${userId}`);
-        if (!personalRes.ok) throw new Error("Failed to fetch personal info");
-        const personalData = await personalRes.json();
+        // 如果 API 不存在或失敗，我們僅記錄錯誤但不中斷 UI 渲染
+        const personalData = personalRes.ok ? await personalRes.json() : {};
         setPersonalInfo(personalData);
 
-        // 2. 抓取健康資料 (包含 height, weight, medical_history, lifestyle...)
+        // 2. 抓取健康資料
         const healthRes = await fetch(`/api/health_info?userId=${userId}`);
-        if (!healthRes.ok) throw new Error("Failed to fetch health info");
-        const healthData = await healthRes.json();
+        const healthData = healthRes.ok ? await healthRes.json() : {};
         setHealthInfo(healthData);
 
       } catch (error) {
         console.error("Failed to fetch user data:", error);
-        toast({
-          title: "資料載入失敗",
-          description: "無法從資料庫取得您的個人與健康資料。",
-          variant: "destructive",
-        });
+        // 即使失敗也讓 loading 結束，讓使用者可以手動輸入目標
       } finally {
         setIsDataLoading(false);
       }
     };
 
     fetchData();
-  }, []); // 僅在組件掛載時執行一次
+  }, []);
 
-  // --- [已修改] 儲存排程至 localStorage ---
-  const registerReminders = () => {
+  
+  // --- 儲存排程 (寫入 PostgreSQL) ---
+  const handleSavePlanToDatabase = async () => {
     if (!generatedPlan.schedule || generatedPlan.schedule.length === 0) {
       toast({
         title: "沒有排程可儲存",
         description: "AI 尚未生成任何排程。",
         variant: "destructive",
-      })
+      });
       return;
     }
+    
+    const userId = localStorage.getItem("userId");
+    if (!userId) {
+       toast({ title: "儲存失敗", description: "無法獲取使用者 ID，請先登入。", variant: "destructive" });
+       return;
+    }
 
-    // 1. 將 AI 排程 (ScheduleItem) 轉換為 提醒器 (Reminder) 格式
-    // 這是 health-plan-reminder.tsx 所需的格式
-    const newReminders = generatedPlan.schedule.map((item, index) => ({
-      id: Date.now() + index, // 產生唯一的 ID
-      title: item.task, // AI 的任務名稱
-      description: "", // AI 未提供，讓使用者自行編輯
-      time: item.time, // AI 提供的時間
-      type: "general", // 給一個預設類型
-      completed: false, // 預設為未完成
-      color: "teal", // 預設顏色
-      notificationEnabled: true, // 預設開啟通知
-      snoozed: false, // 預設未延遲
-    }));
+    setIsSaving(true);
+    setIsSaveSuccessful(false);
 
-    // 2. 將轉換後的陣列存入 localStorage
     try {
-      localStorage.setItem('healthReminders', JSON.stringify(newReminders));
-      
-      // 3. 提供成功反饋
-      toast({
-        title: "儲存成功！",
-        description: `已將 ${newReminders.length} 個排程項目儲存至您的「健康計畫提醒」列表。`,
+      // 呼叫後端 API 路由
+      const response = await fetch('/api/save-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: parseInt(userId, 10), // 確保轉為數字以符合資料庫 int4
+          userGoal: userTextInput,
+          generatedPlan: generatedPlan,
+        }),
       });
 
-      // 1. 設定為儲存成功
-      setIsSaveSuccessful(true); 
+      const result = await response.json();
 
-      // 2. 3秒後自動清除「已儲存」字樣
+      if (!response.ok) {
+        throw new Error(result.error || '儲存計畫失敗');
+      }
+
+      toast({
+        title: "儲存成功！",
+        description: `已新增 ${result.remindersAdded || 0} 個排程至您的提醒列表。`,
+      });
+      
+      setIsSaveSuccessful(true);
       setTimeout(() => {
         setIsSaveSuccessful(false);
       }, 3000);
 
     } catch (error) {
-      console.error("Failed to save reminders to localStorage", error);
+      console.error("Failed to save plan to database", error);
       toast({
         title: "儲存失敗",
-        description: "無法將排程儲存至提醒列表，請稍後再試。",
+        description: error instanceof Error ? error.message : "無法連線至伺服器。",
         variant: "destructive",
       });
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -230,50 +227,40 @@ export function HealthPlanGenerator() {
     setPlanGenerated(false);
     setIsSaveSuccessful(false); 
     
-    // --- 這是最關鍵的修改 ---
-    // 1. 從 state 獲取計算值
     const age = calculateAge(personalInfo.birthdate);
     const bmi = calculateBMI(healthInfo.height, healthInfo.weight);
 
-    // 2. 建立要傳送給 AI 的 healthDataPayload (取代 mockHealthData)
-    //    我們把資料庫抓來的 (snake_case) 欄位，整合成 AI 易讀的格式
+    // 建立要傳送給 AI 的資料 payload
     const healthDataPayload = {
       personalInfo: {
         name: personalInfo.name || "用戶",
         age: age || null,
-        gender: personalInfo.gender || "other", // 'male', 'female', 'other'
+        gender: personalInfo.gender || "other",
         height: parseFloat(healthInfo.height) || null,
         weight: parseFloat(healthInfo.weight) || null,
         bmi: parseFloat(bmi) || null,
       },
       healthMetrics: {
-        // 依照你的要求，血壓血糖先給 null
+        // 這裡如果有真實數據來源可填入，目前設為 null
         bloodPressure: { systolic: null, diastolic: null },
         bloodSugar: null,
-        // (以下欄位 AI 可選用，但你的 DB 目前沒有)
         heartRate: null, 
         sleepHours: null,
         stepsPerDay: null,
         waterIntake: null,
       },
-      // 🔴 重點：傳入 health_info 的資料
       lifestyle: {
         smokingStatus: healthInfo.smoking_status || "unknown",
         alcoholConsumption: healthInfo.alcohol_consumption || "unknown",
         exerciseFrequency: healthInfo.exercise_frequency || "unknown",
       },
-      // 🔴 重點：傳入 health_info 的病史
-      // (我們將 DB 的字串轉為陣列，AI 更易讀)
       healthHistory: healthInfo.medical_history ? [healthInfo.medical_history] : [],
       currentMedications: healthInfo.medications ? [healthInfo.medications] : [],
       allergies: healthInfo.allergies ? [healthInfo.allergies] : [],
       familyHistory: healthInfo.family_history ? [healthInfo.family_history] : [],
     };
 
-    const userGoal = userTextInput;
-
     try {
-      // [修改] 移除 mockApiCall，改用真實 fetch 呼叫
       const response = await fetch('/api/generate-plan', {
         method: 'POST',
         headers: {
@@ -281,34 +268,19 @@ export function HealthPlanGenerator() {
         },
         body: JSON.stringify({
           healthData: healthDataPayload,
-          userGoal: userGoal,
+          userGoal: userTextInput,
         }),
       });
 
       if (!response.ok) {
-        // 如果 API 回傳錯誤 (例如 500)
         const errorData = await response.json();
-        console.error("API Error:", errorData.details || errorData.error);
-        toast({
-          title: "生成失敗",
-          description: `後端 API 發生錯誤: ${errorData.error}`,
-          variant: "destructive",
-        });
-        throw new Error(`API error: ${errorData.error}`);
+        throw new Error(errorData.error || `API Error: ${response.status}`);
       }
 
-      // [修改] 取得 API 回傳的 JSON
       const parsedResult: LLMResponse = await response.json();
 
-      // 檢查回傳的 JSON 結構是否完整
       if (!parsedResult.plan || !parsedResult.schedule) {
-        console.error("API Error: Invalid JSON structure received", parsedResult);
-        toast({
-          title: "生成失敗",
-          description: "AI 回傳的資料格式不正確。",
-          variant: "destructive",
-        });
-        throw new Error("Invalid JSON structure received from API");
+        throw new Error("API 回傳的資料格式不正確 (缺少 plan 或 schedule)");
       }
 
       setGeneratedPlan(parsedResult);
@@ -316,20 +288,17 @@ export function HealthPlanGenerator() {
 
     } catch (error) {
       console.error("生成計畫失敗:", error);
-      // 這裡的 toast 會捕捉 fetch 網路錯誤或 JSON 解析錯誤
-      if (!(error instanceof Error && error.message.includes("API error"))) {
-        toast({
-          title: "生成失敗",
-          description: "無法連線至 API 路由，請檢查網路或後端服務。",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "生成失敗",
+        description: error instanceof Error ? error.message : "無法連線至 API。",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   }
 
-  // --- 主佈局 (已簡化) ---
+  // --- 主佈局 ---
   return (
     <div className="space-y-4">
       <CardHeader className="px-0">
@@ -337,7 +306,7 @@ export function HealthPlanGenerator() {
       </CardHeader>
 
       <div className="space-y-6">
-        {/* 區塊 1: 輸入卡片 (始終顯示) */}
+        {/* 區塊 1: 輸入卡片 */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -347,7 +316,7 @@ export function HealthPlanGenerator() {
           </CardHeader>
           <CardContent className="space-y-6">
             
-            {/* 1. 健康數據概覽 (🔴 已修改 🔴) */}
+            {/* 1. 健康數據概覽 */}
             <div className="bg-teal-50 p-4 rounded-lg">
               <h3 className="font-medium mb-3 flex items-center">
                 <UserCircle className="mr-2 h-4 w-4 text-teal-600" />
@@ -367,7 +336,6 @@ export function HealthPlanGenerator() {
                   <div>
                     <span className="text-gray-500">年齡/性別</span>
                     <p className="font-medium">
-                      {/* 🟢 修正：明確檢查 null，而不是用 || */}
                       {calculateAge(personalInfo.birthdate) !== null 
                         ? `${calculateAge(personalInfo.birthdate)}歲` 
                         : "N/A"} /{" "}
@@ -382,11 +350,11 @@ export function HealthPlanGenerator() {
                   </div>
                   <div>
                     <span className="text-gray-500">血壓</span>
-                    <p className="font-medium">N/A</p> {/* 依照要求顯示 null/N/A */}
+                    <p className="font-medium">N/A</p>
                   </div>
                   <div>
                     <span className="text-gray-500">血糖</span>
-                    <p className="font-medium">N/A</p> {/* 依照要求顯示 null/N/A */}
+                    <p className="font-medium">N/A</p>
                   </div>
                 </div>
               )}
@@ -404,7 +372,7 @@ export function HealthPlanGenerator() {
                 value={userTextInput}
                 onChange={(e) => setUserTextInput(e.target.value)}
                 className="text-base p-4"
-                disabled={isDataLoading} // 🔴 載入資料時應禁止輸入
+                disabled={isLoading}
               />
               <p className="text-xs text-gray-500">
                 AI 助理將參考您的健康數據 (含生活習慣、病史) 和此目標，生成個人化計畫。
@@ -415,7 +383,7 @@ export function HealthPlanGenerator() {
             <div className="flex justify-end pt-6">
               <Button
                 onClick={generateHealthPlan}
-                disabled={!userTextInput || isLoading || isDataLoading} // 🔴 載入資料時應禁止
+                disabled={!userTextInput || isLoading}
                 className="bg-teal-600 hover:bg-teal-700 w-full md:w-auto"
                 size="lg"
               >
@@ -492,7 +460,7 @@ export function HealthPlanGenerator() {
                   ))}
                 </div>
               </CardContent>
-              {/* --- [新增] 儲存按鈕 --- */}
+              {/* 儲存按鈕 */}
               <CardFooter className="flex justify-end items-center pt-4 space-x-3">
                 {isSaveSuccessful && (
                   <span className="text-sm text-green-600 font-medium">
@@ -500,9 +468,13 @@ export function HealthPlanGenerator() {
                   </span>
                 )}
 
-                <Button onClick={registerReminders}>
-                  <Save className="mr-2 h-4 w-4" />
-                  儲存排程至提醒列表
+                <Button onClick={handleSavePlanToDatabase} disabled={isSaving}>
+                  {isSaving ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  {isSaving ? "儲存中..." : "儲存排程至提醒列表"}
                 </Button>
               </CardFooter>
             </Card>
@@ -515,7 +487,7 @@ export function HealthPlanGenerator() {
         )}
       </div>
 
-      {/* 智能助理按鈕 (已保留) */}
+      {/* 智能助理按鈕 */}
       <div className="fixed bottom-6 right-6">
         <Dialog open={assistantDialogOpen} onOpenChange={setAssistantDialogOpen}>
           <DialogTrigger asChild>
