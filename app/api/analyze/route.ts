@@ -1,4 +1,3 @@
-// app/api/analyze/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeBERT } from "@/lib/bertAnalyzer";
 
@@ -82,6 +81,7 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error("❌ BERT 分析錯誤:", e);
     
+    // 在發生未預期錯誤時，回傳一個安全的預設結果
     return NextResponse.json({
       status: "success",
       analysis: {

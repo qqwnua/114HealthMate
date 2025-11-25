@@ -21,7 +21,25 @@ import { Mic, ImageIcon, Send, Info, AlertTriangle, Save, Trash2, FolderOpen } f
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
-// 🔥 新增：簡單的 Markdown 渲染函數（來自 V2）
+// 🔥 還原：刪除所有關於 DebugInfo 和 BertAnalysisResult 的類型定義
+
+// 🔥 確保 Message 類型不包含 debug 字段
+type Message = {
+  role: "user" | "assistant"
+  content: string
+  timestamp: Date
+}
+
+type ModelType = "llama" | "gpt" | "auto"
+
+type HistoryRecord = {
+  id: string
+  date: Date
+  messages: Message[]
+  keywords: string[]
+}
+
+// 🔥 保持：簡單的 Markdown 渲染函數
 const renderMarkdown = (text: string) => {
   if (!text) return ""
   return text
@@ -41,20 +59,8 @@ const renderMarkdown = (text: string) => {
     .replace(/\n/g, '<br/>')
 }
 
-type Message = {
-  role: "user" | "assistant"
-  content: string
-  timestamp: Date
-}
+// 🔥 刪除：renderModelFootnote 函數 (因為不需要顯示 debug 資訊)
 
-type ModelType = "llama" | "gpt" | "auto"
-
-type HistoryRecord = {
-  id: string
-  date: Date
-  messages: Message[]
-  keywords: string[]
-}
 
 export function MedicalConsultation() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -73,7 +79,7 @@ export function MedicalConsultation() {
   const [selectedModel, setSelectedModel] = useState<ModelType>("auto")
   const [endDialogOpen, setEndDialogOpen] = useState(false)
   
-  // 🔥 新增：模型切換警告狀態
+  // 🔥 保持：模型切換警告狀態
   const [modelChangeDialogOpen, setModelChangeDialogOpen] = useState(false)
   const [pendingModel, setPendingModel] = useState<ModelType | null>(null) 
   
@@ -137,6 +143,9 @@ export function MedicalConsultation() {
     setCurrentRecordId(null)
     setSaveSuccess(false)
     setUploadedImage(null)
+    // 重設模型選擇為預設 'auto'
+    setSelectedModel("auto") 
+    setPendingModel(null)
   }
 
   const handleDeleteClick = (id: string) => {
@@ -170,7 +179,7 @@ export function MedicalConsultation() {
     }
   }
 
-  // 🔥 新增：處理模型切換的函數
+  // 🔥 保持：處理模型切換的函數
   const handleModelChange = (value: string) => {
     const newModel = value as ModelType
     
@@ -184,7 +193,7 @@ export function MedicalConsultation() {
     }
   }
 
-  // 🔥 處理確認切換模型
+  // 🔥 保持：處理確認切換模型
   const handleConfirmModelChange = () => {
     if (pendingModel) {
       setSelectedModel(pendingModel)
@@ -193,7 +202,7 @@ export function MedicalConsultation() {
     setModelChangeDialogOpen(false)
   }
 
-  // 🔥 處理取消切換模型
+  // 🔥 保持：處理取消切換模型
   const handleCancelModelChange = () => {
     setPendingModel(null)
     setModelChangeDialogOpen(false)
@@ -238,6 +247,7 @@ export function MedicalConsultation() {
         body: JSON.stringify({
           message: currentInput,
           analysis: analyzeData.analysis,
+          // 🔥 關鍵修正：確保 selectedModel (auto/llama/gpt) 被傳遞給後端，以便後端執行模型覆蓋邏輯
           model: selectedModel, 
           history: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
           image: uploadedImage,
@@ -247,10 +257,13 @@ export function MedicalConsultation() {
       if (!respondResponse.ok) throw new Error(`回應生成失敗：${respondResponse.status}`)
 
       const respondData = await respondResponse.json()
+      
+      // 🔥 還原：不再從 respondData 中獲取 debug 資訊
       const assistantMessage: Message = {
         role: "assistant",
         content: respondData.reply || respondData.message || "抱歉，目前無法生成回覆。",
         timestamp: new Date(),
+        // 🔥 還原：刪除 debug 字段
       }
 
       setMessages(prev => [...prev, assistantMessage])
@@ -307,7 +320,6 @@ export function MedicalConsultation() {
             <h3 className="font-medium text-sm mb-3">選擇 AI 模型</h3>
             <RadioGroup
               value={selectedModel}
-              // 🔥 使用新的處理函數
               onValueChange={handleModelChange} 
             >
               <div className="space-y-3">
@@ -360,7 +372,7 @@ export function MedicalConsultation() {
             {messages.map((message, index) => (
               <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                  className={`max-w-[80%] rounded-lg px-4 py-2 shadow-sm ${
                     message.role === "user" ? "bg-teal-600 text-white" : "bg-gray-100 text-gray-800"
                   }`}
                 >
@@ -369,6 +381,8 @@ export function MedicalConsultation() {
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
                   />
                   
+                  {/* 🔥 還原：刪除顯示模型註腳的代碼 (即刪除 renderModelFootnote 的調用) */}
+
                   <div className={`text-xs mt-2 ${message.role === "user" ? "text-teal-100" : "text-gray-500"}`}>
                     {message.timestamp
                       .toLocaleString("zh-TW", {
@@ -607,7 +621,7 @@ export function MedicalConsultation() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* 🔥 新增：中途切換模型警告 */}
+      {/* 🔥 保持：中途切換模型警告 */}
       <AlertDialog open={modelChangeDialogOpen} onOpenChange={setModelChangeDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
