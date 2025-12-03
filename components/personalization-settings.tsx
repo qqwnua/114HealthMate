@@ -196,25 +196,18 @@ useEffect(() => {
   })
   .then(data => {
     if (data && (data.email || data.name)) { // 檢查是否有資料
-        setUserProfile((prevProfile) => ({
-            ...prevProfile,
-            name: data.name ?? "",
-            email: data.email ?? prevProfile.email,
-            phone: data.phone ?? "", 
-            // 🔴 修正 #3: 移除 avatar 載入
-            // avatar: data.avatar_url ?? "/placeholder.svg",
-            
-            // 🔴 修正：使用 'birthDate' (駝峰式) 接收 'birthdate' (後端值)
-            birthDate: data.birthdate ?? "", 
-            
-            // 🔴 這是正確的，將 'male'/'female'/'other' 設給 state
-            gender: data.gender ?? "", 
-            address: data.address ?? "",
-            
-            // 🔴 修正：確保載入緊急聯絡資訊 (後端回傳 snake_case)
-            emergencyContact: data.emergency_contact ?? "",
-            emergencyPhone: data.emergency_phone ?? "",
-        }));
+        setUserProfile({
+          name: data.name || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          birthDate: data.birthDate || "",  // 對應後端
+          gender: data.gender || "",
+          address: data.address || "",
+          
+          // 關鍵修正：必須用 CamelCase 才能抓到資料
+          emergencyContact: data.emergencyContact || "", 
+          emergencyPhone: data.emergencyPhone || "",      
+        });
     } else {
         // 確保沒有資料時性別也設為空值
         setUserProfile((prevProfile) => ({ ...prevProfile, gender: "" }));
