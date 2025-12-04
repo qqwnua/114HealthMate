@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Mic, ImageIcon, Send, Info, AlertTriangle, Save, Trash2, FolderOpen } from "lucide-react"
+import { Send, Info, AlertTriangle, Save, Trash2, FolderOpen, CheckCircle2, Plus } from "lucide-react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
@@ -67,8 +67,6 @@ export function MedicalConsultation() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState("")
-  const [isVoiceInput, setIsVoiceInput] = useState(false)
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [history, setHistory] = useState<HistoryRecord[]>([])
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -78,71 +76,56 @@ export function MedicalConsultation() {
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelType>("auto")
   const [endDialogOpen, setEndDialogOpen] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null);
   
   // 🔥 保持：模型切換警告狀態
   const [modelChangeDialogOpen, setModelChangeDialogOpen] = useState(false)
   const [pendingModel, setPendingModel] = useState<ModelType | null>(null) 
   
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const toggleVoiceInput = () => {
-    setIsVoiceInput(!isVoiceInput)
-  }
+  useEffect(() => {
+    // 從 localStorage 取得 userId (這是您在 page.tsx 存的)
+    const storedUserId = localStorage.getItem("userId");
+    setUserId(storedUserId);
 
-  const handleFileButtonClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
+    if (storedUserId) {
+      fetchHistory(storedUserId);
     }
-  }
+  }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setUploadedImage(reader.result as string)
+  const fetchHistory = async (uid: string) => {
+    try {
+      const res = await fetch(`/api/history?userId=${uid}`);
+      if (res.ok) {
+        const data = await res.json();
+        // 將資料庫格式轉換為前端 HistoryRecord 格式
+        const dbHistory = data.history.map((item: any) => ({
+          id: item.id,
+          date: new Date(item.date), // 確保轉回 Date 物件
+          messages: item.messages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          })),
+          keywords: item.keywords
+        }));
+        setHistory(dbHistory);
       }
-      reader.readAsDataURL(file)
+    } catch (error) {
+      console.error("無法讀取歷史紀錄:", error);
     }
-  }
+  };
 
-  const handleSaveChat = () => {
-    if (messages.length === 0) return
-
-    const keywords = ["頭痛", "血壓", "飲食建議"] 
-
-    if (currentRecordId) {
-      setHistory(prev =>
-        prev.map(record =>
-          record.id === currentRecordId
-            ? { ...record, messages: [...messages], keywords }
-            : record
-        )
-      )
-    } else {
-      const newRecord: HistoryRecord = {
-        id: Date.now().toString(),
-        date: new Date(),
-        messages: [...messages],
-        keywords,
-      }
-      setHistory(prev => [newRecord, ...prev])
-      setCurrentRecordId(newRecord.id)
-    }
-
-    setSaveSuccess(true)
-  }
+  
 
   const handleEndConsultation = () => {
     setMessages([])
     setCurrentRecordId(null)
     setSaveSuccess(false)
-    setUploadedImage(null)
     // 重設模型選擇為預設 'auto'
     setSelectedModel("auto") 
     setPendingModel(null)
@@ -154,11 +137,12 @@ export function MedicalConsultation() {
   }
 
   const handleEndClick = () => {
-    if (!saveSuccess) {
-      setEndDialogOpen(true)
-    } else {
-      handleEndConsultation()
-    }
+     // 您可以在這裡加一個簡單的 confirm (非必要，看您喜好)
+     // 或者直接重置
+     setMessages([]) // 清空畫面
+     setInput("")
+     setSaveSuccess(false)
+     // setCurrentRecordId(null) // 如果您有這個變數，也要清空
   }
 
   const handleOpenHistory = (record: HistoryRecord) => {
@@ -168,14 +152,37 @@ export function MedicalConsultation() {
     setSaveSuccess(true)
   }
 
-  const handleConfirmDelete = () => {
-    if (recordToDelete) {
-      setHistory((prev) => prev.filter((record) => record.id !== recordToDelete))
-      setRecordToDelete(null)
-      setDeleteDialogOpen(false)
-      if (recordToDelete === currentRecordId) {
-        handleEndConsultation()
+  const handleConfirmDelete = async () => {
+    if (!recordToDelete) return
+
+    try {
+      // 1. 呼叫後端 API 進行刪除
+      const response = await fetch(`/api/history?id=${recordToDelete}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("刪除失敗");
       }
+
+      // 2. API 成功後，更新前端畫面 (從列表中移除該項目)
+      setHistory((prev) => prev.filter((record) => record.id !== recordToDelete))
+      
+      // 3. 處理 UI 狀態
+      if (currentRecordId === recordToDelete) {
+        setCurrentRecordId(null)
+        setMessages([]) // 如果刪除的是當前正在看的，清空畫面
+      }
+      
+      setDeleteDialogOpen(false)
+      setRecordToDelete(null)
+      
+      console.log("✅ 紀錄已成功刪除");
+
+    } catch (error) {
+      console.error("❌ 刪除紀錄時發生錯誤:", error);
+      // 這裡可以選擇是否要跳出 toast 提示使用者
+      alert("刪除失敗，請稍後再試。");
     }
   }
 
@@ -211,29 +218,27 @@ export function MedicalConsultation() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() && !uploadedImage) return
+    // 修改：只檢查文字輸入
+    if (!input.trim()) return
 
-    let fullContent = input.trim();
-    if (uploadedImage) {
-        fullContent += ` (包含圖片附件)`
-    }
+    // 修改：不再需要處理圖片文字拼接
+    const userMessage: Message = { role: "user", content: input.trim(), timestamp: new Date() }
     
-    const userMessage: Message = { role: "user", content: fullContent, timestamp: new Date() }
     setMessages(prev => [...prev, userMessage])
     const currentInput = input
     setInput("")
-    setUploadedImage(null)
+    // 移除 setUploadedImage(null)
     setIsLoading(true)
-
     setSaveSuccess(false)
 
     try {
       setLoadingMessage("正在分析中...")
 
+      // 修改：API 呼叫移除 image 參數
       const analyzeResponse = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: currentInput, image: uploadedImage }), 
+        body: JSON.stringify({ message: currentInput }), 
       })
 
       if (!analyzeResponse.ok) throw new Error(`分析失敗：${analyzeResponse.status}`)
@@ -241,16 +246,17 @@ export function MedicalConsultation() {
 
       setLoadingMessage("生成回覆中...")
 
+      // 修改：API 呼叫移除 image 參數
       const respondResponse = await fetch("/api/respond", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: currentInput,
           analysis: analyzeData.analysis,
-          // 🔥 關鍵修正：確保 selectedModel (auto/llama/gpt) 被傳遞給後端，以便後端執行模型覆蓋邏輯
           model: selectedModel, 
           history: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
-          image: uploadedImage,
+          // image: uploadedImage, // 這一行刪除
+          userId: userId,
         }),
       })
 
@@ -258,15 +264,19 @@ export function MedicalConsultation() {
 
       const respondData = await respondResponse.json()
       
-      // 🔥 還原：不再從 respondData 中獲取 debug 資訊
       const assistantMessage: Message = {
         role: "assistant",
         content: respondData.reply || respondData.message || "抱歉，目前無法生成回覆。",
         timestamp: new Date(),
-        // 🔥 還原：刪除 debug 字段
       }
 
       setMessages(prev => [...prev, assistantMessage])
+
+      if (userId) {
+        await fetchHistory(userId);
+      }
+
+      setSaveSuccess(true);
 
     } catch (err) {
       console.error("❌ 錯誤:", err)
@@ -296,6 +306,21 @@ export function MedicalConsultation() {
       default: return '未知模型'
     }
   }
+
+  // ⭐ 新增：根據 history 計算關鍵字頻率
+  // 1. 攤平所有紀錄中的關鍵字
+  const allKeywords = history.flatMap(record => record.keywords || []);
+  
+  // 2. 計算每個關鍵字出現的次數
+  const keywordCounts = allKeywords.reduce((acc, key) => {
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // 3. 排序：出現次數多的排前面
+  const sortedKeywords = Object.entries(keywordCounts)
+    .sort(([, countA], [, countB]) => countB - countA) // 降序排列
+    .map(([key]) => key); // 只取關鍵字名稱
 
   return (
     <div className="flex flex-col min-h-[80vh]">
@@ -380,18 +405,11 @@ export function MedicalConsultation() {
                     className="prose max-w-none text-base"
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
                   />
-                  
-                  {/* 🔥 還原：刪除顯示模型註腳的代碼 (即刪除 renderModelFootnote 的調用) */}
-
                   <div className={`text-xs mt-2 ${message.role === "user" ? "text-teal-100" : "text-gray-500"}`}>
                     {message.timestamp
                       .toLocaleString("zh-TW", {
-                        year: "numeric",
-                        month: "2-digit",
-                        day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
+                        year: "numeric", month: "2-digit", day: "2-digit",
+                        hour: "2-digit", minute: "2-digit", hour12: false,
                       })
                       .replace(/\//g, "/")
                       .replace(",", "")}
@@ -399,15 +417,6 @@ export function MedicalConsultation() {
                 </div>
               </div>
             ))}
-
-            {uploadedImage && (
-              <div className="flex justify-end">
-                <div className="max-w-[80%] rounded-lg overflow-hidden border border-gray-300 p-2">
-                  <p className="text-xs text-gray-500 mb-1">用戶上傳圖片：</p>
-                  <img src={uploadedImage} alt="Uploaded" className="max-h-40 object-contain" />
-                </div>
-              </div>
-            )}
 
             {isLoading && (
               <div className="flex justify-start">
@@ -426,45 +435,26 @@ export function MedicalConsultation() {
 
           <div className="mt-auto">
             <form onSubmit={handleSubmit} className="flex flex-col space-y-2">
-              {isVoiceInput ? (
-                <div className="border rounded-md p-4 text-center">
-                  <p>正在聆聽您的聲音...</p>
-                  <Button type="button" variant="outline" className="mt-2 bg-transparent" onClick={toggleVoiceInput}>
-                    停止錄音
-                  </Button>
-                </div>
-              ) : (
-                <Textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="請描述您的症狀或健康問題..."
-                  className="min-h-[100px]"
-                />
-              )}
+              {/* ✅ 修改：只保留純文字輸入框，移除語音切換 */}
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="請描述您的症狀或健康問題..."
+                className="min-h-[100px]"
+              />
 
-              <div className="flex justify-between">
-                <div className="flex space-x-2">
-                  <Button type="button" variant="outline" size="icon" onClick={toggleVoiceInput}>
-                    <Mic size={18} />
-                  </Button>
-                  <Button type="button" variant="outline" size="icon" onClick={handleFileButtonClick}>
-                    <ImageIcon size={18} />
-                  </Button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImageUpload}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                </div>
+              <div className="flex justify-between items-center">
+                <div className="flex space-x-2"></div>
                 <div className="flex items-center space-x-2">
-                  {saveSuccess && <span className="text-sm text-green-600 font-medium">已儲存</span>}
-                  <Button type="button" variant="outline" onClick={handleSaveChat} disabled={messages.length === 0}>
-                    <Save size={18} className="mr-2" />
-                    儲存
-                  </Button>
-                  <Button type="submit" disabled={isLoading || (!input && !uploadedImage)}>
+                  {/* ✅ 只保留自動儲存的提示，不給按鈕 */}
+                  {saveSuccess && (
+                    <span className="text-xs text-gray-400 flex items-center">
+                      <CheckCircle2 size={12} className="mr-1" />
+                      已自動儲存
+                    </span>
+                  )}
+                  
+                  <Button type="submit" disabled={isLoading || !input.trim()}>
                     <Send size={18} className="mr-2" />
                     發送
                   </Button>
@@ -472,15 +462,17 @@ export function MedicalConsultation() {
               </div>
             </form>
 
+            {/* ✅ 下方的結束按鈕：功能變成「清空畫面 / 新對話」 */}
             {messages.length > 0 && (
               <div className="mt-4">
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full bg-transparent"
+                  className="w-full bg-transparent border-dashed text-gray-500 hover:text-gray-700"
                   onClick={handleEndClick}
                 >
-                  結束諮詢
+                  <Plus size={16} className="mr-2" /> {/* 建議換成 Plus icon */}
+                  開啟新諮詢 (清空畫面)
                 </Button>
               </div>
             )}
@@ -549,25 +541,39 @@ export function MedicalConsultation() {
 
         <TabsContent value="keywords">
           <div className="space-y-4">
+            {/* 區塊 1: 顯示所有出現過的關鍵字 (從資料庫撈出來的) */}
             <div className="border rounded-md p-4">
-              <h3 className="font-medium mb-2">常見關鍵字分析</h3>
-              <div className="flex flex-wrap gap-2">
-                {["頭痛", "過敏", "血壓", "睡眠", "飲食", "運動", "壓力", "感冒", "消化", "皮膚"].map((keyword, i) => (
-                  <Badge key={i} variant="secondary" className="text-sm py-1 px-3">
-                    {keyword}
-                  </Badge>
-                ))}
-              </div>
+              <h3 className="font-medium mb-2">您的健康關鍵字分析 (依照頻率排序)</h3>
+              {sortedKeywords.length === 0 ? (
+                <p className="text-sm text-gray-500">尚無足夠資料進行分析，請多進行幾次諮詢。</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {/* ⭐ 修改：這裡改成用 sortedKeywords 渲染 */}
+                  {sortedKeywords.map((keyword, i) => (
+                    <Badge key={i} variant="secondary" className="text-sm py-1 px-3">
+                      {keyword} 
+                      {/* 如果想顯示次數，可以改成: {keyword} ({keywordCounts[keyword]}) */}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {/* 區塊 2: 這裡可以保留為「推薦關注」或是直接顯示前 5 名 */}
             <div className="border rounded-md p-4">
-              <h3 className="font-medium mb-2">您的常見關鍵字</h3>
-              <div className="flex flex-wrap gap-2">
-                {["頭痛", "血壓", "睡眠", "壓力"].map((keyword, i) => (
-                  <Badge key={i} className="text-sm py-1 px-3 bg-teal-100 text-teal-800 hover:bg-teal-200">
-                    {keyword}
-                  </Badge>
-                ))}
-              </div>
+              <h3 className="font-medium mb-2">重點關注項目 (Top 5)</h3>
+              {sortedKeywords.length === 0 ? (
+                 <p className="text-sm text-gray-500">尚無資料。</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {/* ⭐ 修改：只顯示前 5 個最常出現的 */}
+                  {sortedKeywords.slice(0, 5).map((keyword, i) => (
+                    <Badge key={i} className="text-sm py-1 px-3 bg-teal-100 text-teal-800 hover:bg-teal-200">
+                      {keyword}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </TabsContent>
