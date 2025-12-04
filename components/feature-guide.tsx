@@ -42,39 +42,37 @@ export function FeatureGuide({ onStartFeature }: FeatureGuideProps) {
     main: [
       {
         id: "consultation",
-        title: "醫病諮詢語言模型",
-        description: "AI驅動的健康諮詢，提供醫療建議與解答",
+        title: "醫病諮詢語言模型", // 保持不變
+        description: "AI驅動的健康諮詢，提供醫療建議與解答", // 強調多媒體輸入和紀錄保存
         icon: <MessageSquare className="h-6 w-6 text-teal-600" />,
         steps: [
-          { title: "開始對話", content: "點擊「開始諮詢」按鈕，輸入您的健康問題或症狀描述。" },
-          { title: "提供詳情", content: "系統可能會詢問更多細節，請盡可能提供準確資訊。" },
-          { title: "獲取建議", content: "AI將分析您的情況並提供專業建議，包括可能的原因和下一步建議。" },
-          { title: "保存記錄", content: "所有對話將被保存，您可隨時查看歷史諮詢記錄。" },
+          { title: "開始對話與輸入方式", content: "點擊「對話諮詢」頁籤，可輸入文字描述您的症狀或問題。" },
+          { title: "獲取 AI 專業建議", content: "AI 將即時分析您的情況，並提供建議或下一步行動指引。" },
+          { title: "模型選擇與警告", content: "您可以切換 LLM 模型，但中途切換可能會導致 AI 忘記部分先前的對話脈絡。" },
+          { title: "保存與回顧紀錄", content: "點擊「保存」按鈕儲存對話，隨時在「諮詢歷史」中回顧，並在「關鍵字分析」中查看重點。" },
         ],
       },
       {
         id: "health-management",
-        title: "個人化健康管理",
-        description: "健康數據追蹤、健檢報告解讀與異常監控",
+        title: "個人化健康管理", // 調整標題，強調分析
+        description: "健康趨勢追蹤與解讀、風險評估", // 聚焦核心數據與 AI 風險評估
         icon: <Activity className="h-6 w-6 text-blue-600" />,
         steps: [
-          { title: "數據輸入", content: "輸入您的基本健康數據，如身高、體重、血壓等。" },
-          { title: "上傳健檢報告", content: "上傳健檢報告PDF或圖片，系統將自動解析關鍵數據。" },
-          { title: "查看分析", content: "系統會分析您的健康狀況，並標記異常指標。" },
-          { title: "設定監控", content: "為關鍵指標設定監控閾值，當數據異常時獲得提醒。" },
+          { title: "記錄健康數據", content: "在「健康儀表板」中，點擊按鈕記錄您的血壓、血糖、血脂或體重數據。" },
+          { title: "查看儀表板與趨勢", content: "在「健康儀表板」中，查看數據最新值與變化趨勢。" },
+          { title: "獲取風險評估", content: "切換至「風險評估」頁籤，獲取代謝症候群、糖尿病、高血壓等項目的 AI 分析結果。" },
+          { title: "接收改善建議", content: "根據風險評估結果，接收 AI 提供的個人化預防與改善建議。" },
         ],
       },
       {
         id: "health-plan",
-        title: "生成健康計畫",
-        description: "根據個人需求生成客製化健康計畫與目標設定",
+        title: "生成健康計畫", // 調整標題，強調追蹤
+        description: "根據個人需求生成客製化健康計畫", // 納入排程和智能助理
         icon: <Calendar className="h-6 w-6 text-purple-600" />,
         steps: [
-          { title: "設定健康目標", content: "選擇您的健康目標，如減重、控糖、增肌等。" },
-          { title: "個人化計畫生成", content: "系統根據您的健康數據和目標生成三階段健康計畫。" },
-          { title: "查看排程建議", content: "查看系統根據您的生活習慣生成的計畫排程。" },
-          { title: "追蹤進度", content: "使用進度追蹤功能監控您的執行成效和生理數據變化。" },
-          { title: "動態調整", content: "使用智能助理功能，根據執行情況動態調整計畫內容。" },
+          { title: "設定個人目標", content: "輸入您的具體健康目標，例如減重、控糖或增肌等。" },
+          { title: "生成計畫與排程", content: "系統會結合您的健康檔案，生成多點建議與詳細的執行排程。" },
+          { title: "保存與提醒", content: "將生成的排程儲存至系統，以便您在提醒列表中追蹤與執行。" },
         ],
       },
       {
@@ -89,30 +87,30 @@ export function FeatureGuide({ onStartFeature }: FeatureGuideProps) {
           { title: "獲取建議", content: "根據分析結果，獲取個人化的心理健康建議。" },
         ],
       },
-      {
-        id: "resources",
-        title: "醫療資源引導",
-        description: "醫療資料搜索、醫療用語解析與看診輔助",
-        icon: <FileText className="h-6 w-6 text-indigo-600" />,
-        steps: [
-          { title: "搜索醫療資訊", content: "輸入關鍵字搜索相關醫療資訊和專業知識。" },
-          { title: "醫療用語解析", content: "上傳或輸入醫療用語，獲取淺顯易懂的解釋。" },
-          { title: "查看醫療記錄", content: "上傳和管理您的醫療記錄，方便就診時查閱。" },
-          { title: "看診輔助", content: "生成看診問題清單，幫助您與醫生有效溝通。" },
-        ],
-      },
-      {
-        id: "collaboration",
-        title: "診療合作",
-        description: "醫療支援地圖、診所預約與線上診療諮詢",
-        icon: <Pill className="h-6 w-6 text-cyan-600" />,
-        steps: [
-          { title: "查找醫療資源", content: "使用醫療支援地圖查找附近的醫療機構。" },
-          { title: "預約診所", content: "選擇合適的診所和時間進行預約。" },
-          { title: "線上諮詢", content: "與醫療專業人員進行線上諮詢。" },
-          { title: "分享健康數據", content: "安全地分享您的健康數據給醫療專業人員。" },
-        ],
-      },
+      // {
+      //   id: "resources",
+      //   title: "醫療資源引導",
+      //   description: "醫療資料搜索、醫療用語解析與看診輔助",
+      //   icon: <FileText className="h-6 w-6 text-indigo-600" />,
+      //   steps: [
+      //     { title: "搜索醫療資訊", content: "輸入關鍵字搜索相關醫療資訊和專業知識。" },
+      //     { title: "醫療用語解析", content: "上傳或輸入醫療用語，獲取淺顯易懂的解釋。" },
+      //     { title: "查看醫療記錄", content: "上傳和管理您的醫療記錄，方便就診時查閱。" },
+      //     { title: "看診輔助", content: "生成看診問題清單，幫助您與醫生有效溝通。" },
+      //   ],
+      // },
+      // {
+      //   id: "collaboration",
+      //   title: "診療合作",
+      //   description: "醫療支援地圖、診所預約與線上診療諮詢",
+      //   icon: <Pill className="h-6 w-6 text-cyan-600" />,
+      //   steps: [
+      //     { title: "查找醫療資源", content: "使用醫療支援地圖查找附近的醫療機構。" },
+      //     { title: "預約診所", content: "選擇合適的診所和時間進行預約。" },
+      //     { title: "線上諮詢", content: "與醫療專業人員進行線上諮詢。" },
+      //     { title: "分享健康數據", content: "安全地分享您的健康數據給醫療專業人員。" },
+      //   ],
+      // },
     ],
   }
 

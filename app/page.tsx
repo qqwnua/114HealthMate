@@ -7,10 +7,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { MedicalConsultation } from "@/components/medical-consultation"
 import { HealthManagement } from "@/components/health-management"
 import { HealthPlanReminder } from "@/components/health-plan-reminder"
-import { MedicalResources } from "@/components/medical-resources"
+// import { MedicalResources } from "@/components/medical-resources"
 import { MessageSquare, Activity, User, Calendar, FileText, Pill, Bell, Brain, Settings } from "lucide-react"
 import { HealthPlanGenerator } from "@/components/health-plan-generator"
-import { TreatmentCollaboration } from "@/components/treatment-collaboration"
+// import { TreatmentCollaboration } from "@/components/treatment-collaboration"
 import { Button } from "@/components/ui/button"
 import { PsychologicalConsultation } from "@/components/psychological-consultation"
 import {
@@ -35,7 +35,7 @@ export default function Home() {
   // 渲染主介面
   const renderMainInterface = () => {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
         <FunctionCard
           icon={<MessageSquare className="h-8 w-8 text-teal-600" />}
           title="醫病諮詢語言模型"
@@ -46,14 +46,14 @@ export default function Home() {
         <FunctionCard
           icon={<Activity className="h-8 w-8 text-blue-600" />}
           title="個人化健康管理"
-          description="健康數據追蹤、健檢報告解讀與異常監控"
+          description="健康趨勢追蹤與解讀、風險評估"
           onClick={() => setActiveComponent("health-management")}
         />
 
         <FunctionCard
           icon={<Calendar className="h-8 w-8 text-purple-600" />}
           title="生成健康計畫"
-          description="根據個人需求生成客製化健康計畫與目標設定"
+          description="根據個人需求生成客製化健康計畫"
           onClick={() => setActiveComponent("health-plan")}
         />
 
@@ -64,7 +64,7 @@ export default function Home() {
           onClick={() => setActiveComponent("psychological")}
         />
 
-        <FunctionCard
+        {/* <FunctionCard
           icon={<FileText className="h-8 w-8 text-indigo-600" />}
           title="醫療資源引導"
           description="醫療資料搜索、醫療用語解析與看診輔助"
@@ -76,7 +76,7 @@ export default function Home() {
           title="診療合作"
           description="醫療支援地圖、診所預約與線上診療諮詢"
           onClick={() => setActiveComponent("collaboration")}
-        />
+        /> */}
       </div>
     )
   }
@@ -92,10 +92,10 @@ export default function Home() {
         return <HealthPlanGenerator />
       case "psychological":
         return <PsychologicalConsultation />
-      case "resources":
-        return <MedicalResources />
-      case "collaboration":
-        return <TreatmentCollaboration />
+      // case "resources":
+      //   return <MedicalResources />
+      // case "collaboration":
+      //   return <TreatmentCollaboration />
       case "reminders":
         return <HealthPlanReminder />
       default:
@@ -107,7 +107,13 @@ export default function Home() {
     <div className="container mx-auto p-4">
       <header className="flex justify-between items-center mb-6">
         <div className="flex items-center">
-          <h1 className="text-2xl font-bold text-teal-600 mr-4">HealthMate</h1>
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-bold text-teal-600">HealthMate</h1>
+            {/* 新增的描述文字 */}
+            <p className="text-xs text-gray-500">
+              基於大型語言模型的健康管理AI平台
+            </p>
+          </div>
           {activeComponent && (
             <Button variant="ghost" onClick={handleBackToMain} className="text-teal-600">
               返回主頁
@@ -115,15 +121,11 @@ export default function Home() {
           )}
         </div>
         <div className="flex items-center gap-4">
-          <FeatureGuide />
+          <FeatureGuide onStartFeature={setActiveComponent} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="text-teal-600 hover:text-teal-800 relative">
-                <Bell size={20} />
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                  3
-                </span>
-              </button>
+              <button className="text-teal-600 hover:text-teal-800"> <Bell size={20} />
+                </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={() => setActiveComponent("reminders")}>
@@ -140,9 +142,6 @@ export default function Home() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 py-1.5 text-sm font-medium">王小明</div>
-              <div className="px-2 py-1.5 text-xs text-gray-500">wang.xiaoming@email.com</div>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setPersonalizationSettingsOpen(true)}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>個人化設定</span>
