@@ -181,8 +181,15 @@ export function HealthManagement() {
 
   const getLatest = (key: keyof HealthRecord) => {
     if (historyData.length === 0) return "--";
-    const val = historyData[historyData.length - 1][key];
-    return val !== undefined && val !== null ? val : "--";
+    
+    // 從最後一筆往回找，找到第一個有值的
+    for (let i = historyData.length - 1; i >= 0; i--) {
+      const val = historyData[i][key];
+      if (val !== undefined && val !== null && val !== "") {
+        return val;
+      }
+    }
+    return "--";
   };
 
   const getRiskBadgeColor = (level: string) => {
@@ -245,8 +252,8 @@ export function HealthManagement() {
                         <XAxis dataKey="date" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
                         <YAxis hide domain={['dataMin - 10', 'dataMax + 10']} />
                         <Tooltip />
-                        <Line type="monotone" dataKey="systolic" stroke="#ef4444" strokeWidth={2} dot={{r: 2}} name="收縮壓" />
-                        <Line type="monotone" dataKey="diastolic" stroke="#f97316" strokeWidth={2} dot={{r: 2}} name="舒張壓" />
+                        <Line type="monotone" dataKey="systolic" stroke="#ef4444" strokeWidth={2} dot={{r: 2}} name="收縮壓" connectNulls />
+                        <Line type="monotone" dataKey="diastolic" stroke="#f97316" strokeWidth={2} dot={{r: 2}} name="舒張壓" connectNulls />
                         </LineChart>
                     </ResponsiveContainer>
                     </div>
@@ -265,7 +272,20 @@ export function HealthManagement() {
                         <span className="text-3xl font-bold text-gray-900">{getLatest('bloodSugar')}</span>
                         <span className="text-sm text-gray-500 ml-2">mg/dL</span>
                         <span className="text-xs text-gray-400 ml-2">
-                        ({historyData.length > 0 && historyData[historyData.length-1]?.bloodSugarType === 'fasting' ? "空腹" : "飯後"})
+                          {(() => {
+                            // 1. 往回找最近一筆有血糖的紀錄
+                            const latestSugarRecord = [...historyData].reverse().find(r => r.bloodSugar != null);
+                            
+                            if (latestSugarRecord && latestSugarRecord.bloodSugarType) {
+                              // 【修正重點】加上 "as string" 來解決 TypeScript 錯誤
+                              const type = latestSugarRecord.bloodSugarType as string;
+
+                              // 現在 .includes 就不會報錯了
+                              if (type === 'fasting' || type.includes('fasting')) return "(空腹)";
+                              if (type === 'postprandial' || type.includes('postprandial')) return "(飯後)";
+                            }
+                            return "";
+                          })()}
                         </span>
                     </div>
                     </div>
@@ -276,7 +296,7 @@ export function HealthManagement() {
                         <XAxis dataKey="date" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
                         <YAxis hide domain={['dataMin - 10', 'dataMax + 10']} />
                         <Tooltip />
-                        <Line type="monotone" dataKey="bloodSugar" stroke="#3b82f6" strokeWidth={2} dot={{r: 2}} name="血糖" />
+                        <Line type="monotone" dataKey="bloodSugar" stroke="#3b82f6" strokeWidth={2} dot={{r: 2}} name="血糖" connectNulls />
                         </LineChart>
                     </ResponsiveContainer>
                     </div>
@@ -310,7 +330,7 @@ export function HealthManagement() {
                         <XAxis dataKey="date" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
                         <YAxis hide domain={['dataMin - 10', 'dataMax + 10']} />
                         <Tooltip />
-                        <Line type="monotone" dataKey="totalCholesterol" stroke="#8b5cf6" strokeWidth={2} dot={{r: 2}} name="總膽固醇" />
+                        <Line type="monotone" dataKey="totalCholesterol" stroke="#8b5cf6" strokeWidth={2} dot={{r: 2}} name="總膽固醇" connectNulls />
                         </LineChart>
                     </ResponsiveContainer>
                     </div>
@@ -337,7 +357,7 @@ export function HealthManagement() {
                         <XAxis dataKey="date" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
                         <YAxis hide domain={['dataMin - 1', 'dataMax + 1']} />
                         <Tooltip />
-                        <Line type="monotone" dataKey="weight" stroke="#10b981" strokeWidth={2} dot={{r: 2}} name="體重" />
+                        <Line type="monotone" dataKey="weight" stroke="#10b981" strokeWidth={2} dot={{r: 2}} name="體重" connectNulls />
                         </LineChart>
                     </ResponsiveContainer>
                     </div>
@@ -371,9 +391,30 @@ export function HealthManagement() {
                  <h4 className="font-medium mb-2 text-gray-900">整體趨勢解讀</h4>
                  {/* 如果是預設文字，顯示提示 */}
                  <p className="text-gray-700 text-sm leading-relaxed">
-                   {latestAnalysis.trendAnalysis === "資料不足，無法分析趨勢。" && historyData.length > 0 
-                     ? "正在等待 AI 分析結果，請稍候或點擊上方「重新分析」..." 
-                     : latestAnalysis.trendAnalysis}
+                   <div className="space-y-2 text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
+                      {latestAnalysis.trendAnalysis ? (
+                        latestAnalysis.trendAnalysis
+                          // 1. 用 "【" 切割字串
+                          .split('【')
+                          // 2. 過濾掉因為切割產生的空字串
+                          .filter(item => item.trim() !== "")
+                          // 3. 把切開的每一段變成一個獨立的 div
+                          .map((item, index) => (
+                            <div key={index} className="flex items-start">
+                              {/* 把 "【" 加回來，並設為粗體顏色 */}
+                              <span className="font-bold text-teal-700 mr-1">
+                                【{item.split('】')[0]}】
+                              </span>
+                              {/* 顯示剩餘的文字內容 */}
+                              <span>
+                                {item.split('】')[1]}
+                              </span>
+                            </div>
+                          ))
+                      ) : (
+                        "尚無趨勢分析資料"
+                      )}
+                    </div>
                  </p>
               </div>
 
@@ -385,9 +426,10 @@ export function HealthManagement() {
                       <XAxis dataKey="date" />
                       <YAxis />
                       <Tooltip />
-                      <Line type="monotone" dataKey="systolic" stroke="#ef4444" name="收縮壓" />
-                      <Line type="monotone" dataKey="bloodSugar" stroke="#3b82f6" name="血糖" />
-                      <Line type="monotone" dataKey="weight" stroke="#10b981" name="體重" />
+                      <Line type="monotone" dataKey="systolic" stroke="#ef4444" name="收縮壓" connectNulls />
+                      <Line type="monotone" dataKey="bloodSugar" stroke="#3b82f6" name="血糖" connectNulls />
+                      <Line type="monotone" dataKey="weight" stroke="#10b981" name="體重" connectNulls />
+                      <Line type="monotone" dataKey="totalCholesterol" stroke="#8b5cf6" name="總膽固醇" connectNulls />
                     </LineChart>
                   </ResponsiveContainer>
               </div>
@@ -414,12 +456,14 @@ export function HealthManagement() {
                      <div className="p-4 rounded-lg border bg-blue-50/50 border-blue-100 col-span-1 md:col-span-2 flex flex-col justify-between">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium text-blue-900">Framingham 心血管風險 (10年內)</span>
-                          <Badge className="bg-blue-600">{latestAnalysis.framinghamRisk.percentage}</Badge>
+                          <Badge className="bg-blue-600">
+                            {latestAnalysis?.framinghamRisk?.percentage || "--%"}
+                          </Badge>
                         </div>
                         <div className="flex items-center justify-between">
-                           <Badge variant={getRiskBadgeColor(latestAnalysis.framinghamRisk.level) as any}>
-                             {latestAnalysis.framinghamRisk.level}
-                           </Badge>
+                          <Badge variant={getRiskBadgeColor(latestAnalysis?.framinghamRisk?.level || "未評估") as any}>
+                            {latestAnalysis?.framinghamRisk?.level || "未評估"}
+                          </Badge>
                            <span className="text-[10px] text-gray-400">依據: 年齡/性別/血壓/膽固醇/吸菸</span>
                         </div>
                      </div>
