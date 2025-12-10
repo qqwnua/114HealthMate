@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     // 個人資料
     const personalRes = await pool.query(
-      "SELECT name, gender, birthdate, address, avatar_url FROM personal_info WHERE user_id = $1",
+      "SELECT name, gender, birthdate, address FROM personal_info WHERE user_id = $1",
       [userId]
     );
     console.log("🔹 personalRes.rows:", personalRes.rows);

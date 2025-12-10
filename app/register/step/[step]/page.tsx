@@ -23,7 +23,7 @@ import {
 type PersonalInfo = {
   name: string
   gender: string
-  birthdate: string
+  birthDate: string
   address: string
   avatar: string | null
 }
@@ -48,7 +48,7 @@ export default function RegisterStep() {
   const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: "",
     gender: "",
-    birthdate: "",
+    birthDate: "",
     address: "",
     avatar: null,
   })
@@ -74,7 +74,7 @@ export default function RegisterStep() {
         const payload = {
           ...personalInfo,
           userId,
-          birthdate: personalInfo.birthdate || null,
+          birthDate: personalInfo.birthDate || null,
         }
 
         const res = await fetch("/api/personal_info", {
@@ -163,9 +163,9 @@ export default function RegisterStep() {
                 <Label>出生日期</Label>
                 <Input
                   type="date"
-                  value={personalInfo.birthdate}
+                  value={personalInfo.birthDate}
                   onChange={(e) =>
-                    setPersonalInfo({ ...personalInfo, birthdate: e.target.value })
+                    setPersonalInfo({ ...personalInfo, birthDate: e.target.value })
                   }
                 />
               </div>

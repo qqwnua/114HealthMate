@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -23,26 +23,13 @@ import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Heart, BarChart3, MessageSquare, MicIcon, Save } from "lucide-react"
+import { toast } from "sonner"
 
-// Mock data
-const emotionalRadarData = [
-  { subject: "焦慮", A: 3, fullMark: 10 },
-  { subject: "壓力", A: 7, fullMark: 10 },
-  { subject: "情緒穩定", A: 6, fullMark: 10 },
-  { subject: "幸福感", A: 5, fullMark: 10 },
-  { subject: "社交滿足", A: 4, fullMark: 10 },
-  { subject: "自信", A: 6, fullMark: 10 },
-]
-
-const emotionalTrendData = [
-  { date: "5/15", anxiety: 5, stress: 8, happiness: 4 },
-  { date: "5/16", anxiety: 6, stress: 7, happiness: 4 },
-  { date: "5/17", anxiety: 4, stress: 6, happiness: 5 },
-  { date: "5/18", anxiety: 3, stress: 5, happiness: 6 },
-  { date: "5/19", anxiety: 4, stress: 6, happiness: 5 },
-  { date: "5/20", anxiety: 3, stress: 4, happiness: 7 },
-  { date: "5/21", anxiety: 2, stress: 3, happiness: 8 },
-]
+// 🔧 輔助函數:取得 userid
+function getuserid(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('userid');
+}
 
 export function EmotionalAssessment() {
   const [activeTab, setActiveTab] = useState("assessment")
@@ -54,12 +41,150 @@ export function EmotionalAssessment() {
     social: 4,
     confidence: 6,
   })
+  const [notes, setNotes] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  
+  // 雷達圖數據 - 從 emotionalValues 動態生成
+  const [emotionalRadarData, setEmotionalRadarData] = useState([
+    { subject: "焦慮", A: 3, fullMark: 10 },
+    { subject: "壓力", A: 7, fullMark: 10 },
+    { subject: "情緒穩定", A: 6, fullMark: 10 },
+    { subject: "幸福感", A: 5, fullMark: 10 },
+    { subject: "社交滿足", A: 4, fullMark: 10 },
+    { subject: "自信", A: 6, fullMark: 10 },
+  ])
+  
+  // 趨勢圖數據 - 從 API 載入
+  const [emotionalTrendData, setEmotionalTrendData] = useState<any[]>([])
+
+  // 🔧 載入歷史趨勢數據
+  useEffect(() => {
+    loadTrendData()
+  }, [])
+
+  // 🔧 更新雷達圖數據
+  useEffect(() => {
+    setEmotionalRadarData([
+      { subject: "焦慮", A: emotionalValues.anxiety, fullMark: 10 },
+      { subject: "壓力", A: emotionalValues.stress, fullMark: 10 },
+      { subject: "情緒穩定", A: emotionalValues.mood, fullMark: 10 },
+      { subject: "幸福感", A: emotionalValues.happiness, fullMark: 10 },
+      { subject: "社交滿足", A: emotionalValues.social, fullMark: 10 },
+      { subject: "自信", A: emotionalValues.confidence, fullMark: 10 },
+    ])
+  }, [emotionalValues])
+
+  const loadTrendData = async () => {
+    const userid = getuserid()
+    if (!userid) return
+
+    try {
+      const response = await fetch(`/api/self-assessment?userid=${userid}&days=7`)
+      const data = await response.json()
+
+      if (data.success && data.assessments.length > 0) {
+        // 轉換為趨勢圖格式
+        const trendData = data.assessments.map((assessment: any) => ({
+          date: new Date(assessment.completed_at).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }),
+          anxiety: assessment.anxiety_level,
+          stress: assessment.stress_level,
+          happiness: assessment.happiness_level
+        }))
+        setEmotionalTrendData(trendData)
+      } else {
+        // 無資料時使用預設值
+        setEmotionalTrendData([
+          { date: "5/15", anxiety: 5, stress: 8, happiness: 4 },
+          { date: "5/16", anxiety: 6, stress: 7, happiness: 4 },
+          { date: "5/17", anxiety: 4, stress: 6, happiness: 5 },
+          { date: "5/18", anxiety: 3, stress: 5, happiness: 6 },
+          { date: "5/19", anxiety: 4, stress: 6, happiness: 5 },
+          { date: "5/20", anxiety: 3, stress: 4, happiness: 7 },
+          { date: "5/21", anxiety: 2, stress: 3, happiness: 8 },
+        ])
+      }
+    } catch (error) {
+      console.error("載入趨勢數據錯誤:", error)
+    }
+  }
 
   const handleEmotionalChange = (key: string, value: number[]) => {
     setEmotionalValues({
       ...emotionalValues,
       [key]: value[0],
     })
+  }
+
+  // 🔧 儲存評估 - 改用 API
+  const saveAssessment = async () => {
+    console.log("🔵 saveAssessment 被呼叫")
+    console.log("🔵 emotionalValues:", emotionalValues)
+    
+    const userid = getuserid()
+    console.log("🔵 userid:", userid)
+    
+    if (!userid) {
+      toast.error("請先登入")
+      return
+    }
+
+    try {
+      setIsLoading(true)
+
+      // 計算總分
+      const totalScore = Math.round(
+        ((10 - emotionalValues.anxiety) + 
+         (10 - emotionalValues.stress) + 
+         emotionalValues.mood + 
+         emotionalValues.happiness + 
+         emotionalValues.social + 
+         emotionalValues.confidence) / 6 * 10
+      )
+      
+      console.log("🔵 totalScore:", totalScore)
+      console.log("🔵 發送資料:", {
+        userid: parseInt(userid),
+        anxiety_level: emotionalValues.anxiety,
+        stress_level: emotionalValues.stress,
+        mood_stability: emotionalValues.mood,
+        happiness_level: emotionalValues.happiness,
+        social_satisfaction: emotionalValues.social,
+        confidence_level: emotionalValues.confidence,
+        notes: notes,
+        total_score: totalScore
+      })
+
+      const response = await fetch('/api/self-assessment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userid: parseInt(userid),
+          anxiety_level: emotionalValues.anxiety,
+          stress_level: emotionalValues.stress,
+          mood_stability: emotionalValues.mood,
+          happiness_level: emotionalValues.happiness,
+          social_satisfaction: emotionalValues.social,
+          confidence_level: emotionalValues.confidence,
+          notes: notes,
+          total_score: totalScore
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast.success("評估已儲存！")
+        setNotes("") // 清空筆記
+        loadTrendData() // 重新載入趨勢數據
+      } else {
+        toast.error(data.error || "儲存失敗")
+      }
+    } catch (error) {
+      console.error("儲存評估錯誤:", error)
+      toast.error("儲存失敗")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -83,7 +208,9 @@ export function EmotionalAssessment() {
                   <Heart className="mr-2 h-5 w-5 text-teal-600" />
                   今日情緒評估
                 </h3>
-                <span className="text-sm text-gray-500">2023/05/21</span>
+                <span className="text-sm text-gray-500">
+                  {new Date().toLocaleDateString('zh-TW')}
+                </span>
               </div>
 
               <div className="space-y-6">
@@ -175,13 +302,15 @@ export function EmotionalAssessment() {
                     id="emotional-notes"
                     placeholder="記錄今天的情緒感受、壓力來源或任何想法..."
                     className="min-h-[100px]"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
                   />
                 </div>
 
                 <div className="flex justify-end">
-                  <Button>
+                  <Button onClick={saveAssessment} disabled={isLoading}>
                     <Save className="mr-2 h-4 w-4" />
-                    儲存評估
+                    {isLoading ? "儲存中..." : "儲存評估"}
                   </Button>
                 </div>
               </div>
@@ -214,16 +343,19 @@ export function EmotionalAssessment() {
                 <div className="bg-teal-50 p-4 rounded-md">
                   <h4 className="font-medium mb-2">情緒分析摘要</h4>
                   <p className="text-sm text-gray-700">
-                    根據您的評估，目前壓力水平較高（7/10），可能需要關注。
-                    情緒穩定度和自信程度中等（6/10），幸福感和社交滿足度略低於平均水平。
-                    焦慮程度較低（3/10），這是一個積極的指標。
+                    根據您的評估，目前壓力水平{emotionalValues.stress >= 7 ? '較高' : emotionalValues.stress >= 4 ? '中等' : '較低'}（{emotionalValues.stress}/10）
+                    {emotionalValues.stress >= 7 && '，可能需要關注'}。
+                    情緒穩定度和自信程度{emotionalValues.mood >= 6 ? '良好' : '需要改善'}（{emotionalValues.mood}/10），
+                    幸福感{emotionalValues.happiness >= 6 ? '良好' : '略低於平均水平'}。
+                    焦慮程度{emotionalValues.anxiety <= 3 ? '較低' : emotionalValues.anxiety <= 6 ? '中等' : '較高'}（{emotionalValues.anxiety}/10）
+                    {emotionalValues.anxiety <= 3 && '，這是一個積極的指標'}。
                   </p>
                   <h4 className="font-medium mt-3 mb-2">建議</h4>
                   <ul className="list-disc list-inside text-sm text-gray-700">
-                    <li>考慮增加壓力管理活動，如冥想或深呼吸練習</li>
-                    <li>增加社交互動以提高社交滿足度</li>
-                    <li>保持目前有效的焦慮管理策略</li>
-                    <li>嘗試增加能提升幸福感的活動，如戶外活動或愛好</li>
+                    {emotionalValues.stress >= 7 && <li>考慮增加壓力管理活動，如冥想或深呼吸練習</li>}
+                    {emotionalValues.social < 5 && <li>增加社交互動以提高社交滿足度</li>}
+                    {emotionalValues.anxiety <= 3 && <li>保持目前有效的焦慮管理策略</li>}
+                    {emotionalValues.happiness < 6 && <li>嘗試增加能提升幸福感的活動，如戶外活動或愛好</li>}
                   </ul>
                 </div>
 

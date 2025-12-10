@@ -76,6 +76,12 @@ const weatherIcons = {
   snowy: CloudRain
 }
 
+// 🔧 輔助函數:取得 userid
+function getuserid(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('userid');
+}
+
 export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {}) {
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [currentEntry, setCurrentEntry] = useState<Partial<JournalEntry>>({
@@ -97,28 +103,56 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
   const [selectedMoodFilter, setSelectedMoodFilter] = useState<string | null>(null)
   const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [isLoading, setIsLoading] = useState(false)
 
-  // 載入資料
+  // 🔧 載入資料 - 改用 API
   useEffect(() => {
-    const savedEntries = localStorage.getItem('journalEntries')
-    if (savedEntries) {
-      try {
-        const parsedEntries = JSON.parse(savedEntries)
-        // 驗證並修正每個 entry 的資料
-        const validatedEntries = parsedEntries.map((entry: any) => ({
-          ...entry,
-          mood: entry.mood && Object.keys(moodColors).includes(entry.mood) ? entry.mood : "neutral",
-          weather: entry.weather && Object.keys(weatherIcons).includes(entry.weather) ? entry.weather : "sunny",
-          attachments: entry.attachments || [],
-          tags: entry.tags || [],
-          healthData: entry.healthData || { sleep: 7, exercise: 30, water: 1500, stress: 5 }
-        }))
-        setEntries(validatedEntries)
-      } catch (error) {
-        console.error("Failed to load journal entries:", error)
-        setEntries([])
+    loadJournalEntries()
+    loadAvailableTags()
+  }, [selectedMoodFilter])
+
+  const loadJournalEntries = async () => {
+    const userid = getuserid()
+    if (!userid) return
+
+    try {
+      setIsLoading(true)
+      let url = `/api/self-recording?userid=${userid}`
+      if (selectedMoodFilter) {
+        url += `&mood=${selectedMoodFilter}`
       }
+
+      const response = await fetch(url)
+      const data = await response.json()
+
+      if (data.success) {
+        // 轉換 API 格式到前端格式
+        const formattedEntries = data.entries.map((entry: any) => ({
+          id: entry.id.toString(),
+          date: entry.entry_date,
+          title: entry.title,
+          content: entry.content,
+          mood: entry.mood || 'neutral',
+          weather: entry.weather || 'sunny',
+          tags: entry.tags || [],
+          attachments: entry.attachments || [],
+          healthData: {
+            sleep: entry.sleep_hours || 7,
+            exercise: entry.exercise_minutes || 30,
+            water: entry.water_ml || 1500,
+            stress: entry.stress_level || 5
+          }
+        }))
+        setEntries(formattedEntries)
+      }
+    } catch (error) {
+      console.error("載入日誌錯誤:", error)
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  const loadAvailableTags = () => {
     const savedTags = localStorage.getItem('availableTags')
     if (savedTags) {
       try {
@@ -127,47 +161,82 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
         console.error("Failed to load tags:", error)
       }
     }
-  }, [])
+  }
 
-  // 儲存日誌
-  const saveJournal = () => {
+  // 🔧 儲存日誌 - 改用 API
+  const saveJournal = async () => {
     if (!currentEntry.title || !currentEntry.content) {
       toast.error("請填寫標題和內容")
       return
     }
 
-    const newEntry: JournalEntry = {
-      id: Date.now().toString(),
-      date: currentEntry.date || new Date().toISOString().split('T')[0],
-      title: currentEntry.title,
-      content: currentEntry.content,
-      mood: currentEntry.mood as any || "neutral",
-      weather: currentEntry.weather as any || "sunny",
-      tags: currentEntry.tags || [],
-      attachments: currentEntry.attachments || [],
-      healthData: currentEntry.healthData || { sleep: 7, exercise: 30, water: 1500, stress: 5 }
+    const userid = getuserid()
+    if (!userid) {
+      toast.error("請先登入")
+      return
     }
 
-    const updatedEntries = [...entries, newEntry]
-    setEntries(updatedEntries)
-    localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
-    
-    toast.success("日誌已儲存！")
-    
-    // 重置表單
-    setCurrentEntry({
-      date: new Date().toISOString().split('T')[0],
-      title: "",
-      content: "",
-      mood: "neutral",
-      weather: "sunny",
-      tags: [],
-      attachments: [],
-      healthData: { sleep: 7, exercise: 30, water: 1500, stress: 5 }
-    })
+    try {
+      setIsLoading(true)
+
+      // 計算 mood_score
+      const moodScoreMap = {
+        happy: 80,
+        excited: 90,
+        neutral: 50,
+        anxious: 30,
+        sad: 20
+      }
+
+      const response = await fetch('/api/self-recording', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userid: parseInt(userid),
+          entry_date: currentEntry.date,
+          title: currentEntry.title,
+          content: currentEntry.content,
+          mood: currentEntry.mood,
+          weather: currentEntry.weather,
+          tags: currentEntry.tags,
+          attachments: currentEntry.attachments,
+          sleep_hours: currentEntry.healthData?.sleep || 7,
+          exercise_minutes: currentEntry.healthData?.exercise || 30,
+          water_ml: currentEntry.healthData?.water || 1500,
+          stress_level: currentEntry.healthData?.stress || 5,
+          mood_score: moodScoreMap[currentEntry.mood as keyof typeof moodScoreMap] || 50
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast.success("日誌已儲存！")
+        loadJournalEntries()
+        
+        // 重置表單
+        setCurrentEntry({
+          date: new Date().toISOString().split('T')[0],
+          title: "",
+          content: "",
+          mood: "neutral",
+          weather: "sunny",
+          tags: [],
+          attachments: [],
+          healthData: { sleep: 7, exercise: 30, water: 1500, stress: 5 }
+        })
+      } else {
+        toast.error(data.error || "儲存失敗")
+      }
+    } catch (error) {
+      console.error("儲存日誌錯誤:", error)
+      toast.error("儲存失敗")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  // 處理檔案上傳
+  // 處理檔案上傳 (保持原邏輯)
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files || files.length === 0) return
@@ -202,8 +271,9 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
               type: fileType,
               url: preview,
               size: file.size,
-              preview: fileType === "image" || fileType === "video" ? preview : undefined
+              preview: fileType === 'image' ? preview : undefined
             })
+            
             resolve(null)
           }
           reader.readAsDataURL(file)
@@ -214,23 +284,41 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
         ...currentEntry,
         attachments: [...(currentEntry.attachments || []), ...newAttachments]
       })
-
+      
       toast.success(`已上傳 ${newAttachments.length} 個檔案`)
     } catch (error) {
-      toast.error("上傳失敗")
+      console.error("上傳失敗:", error)
+      toast.error("檔案上傳失敗")
     } finally {
       setUploadingFile(false)
     }
   }
 
-  // 刪除記錄
-  const deleteEntry = (id: string) => {
-    if (window.confirm('確定要刪除這篇日誌嗎？')) {
-      const updatedEntries = entries.filter(e => e.id !== id)
-      setEntries(updatedEntries)
-      localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
-      toast.success('日誌已刪除')
-      setIsDetailDialogOpen(false)
+  // 🔧 刪除日誌 - 改用 API
+  const deleteEntry = async (id: string) => {
+    if (!confirm("確定要刪除這篇日誌嗎？")) return
+
+    const userid = getuserid()
+    if (!userid) return
+
+    try {
+      const response = await fetch(
+        `/api/self-recording?id=${id}&userid=${userid}`,
+        { method: 'DELETE' }
+      )
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast.success("日誌已刪除")
+        setIsDetailDialogOpen(false)
+        loadJournalEntries()
+      } else {
+        toast.error(data.error || "刪除失敗")
+      }
+    } catch (error) {
+      console.error("刪除日誌錯誤:", error)
+      toast.error("刪除失敗")
     }
   }
 
@@ -238,6 +326,12 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
   const viewEntryDetail = (entry: JournalEntry) => {
     setSelectedEntryForView(entry)
     setIsDetailDialogOpen(true)
+  }
+
+  // 取得指定日期的日誌
+  const getEntriesForDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0]
+    return entries.filter(entry => entry.date === dateStr)
   }
 
   return (
@@ -269,9 +363,9 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
                   <BookOpen className="mr-2 h-5 w-5 text-teal-600" />
                   生活記錄
                 </h3>
-                <Button onClick={saveJournal} className="bg-teal-600 hover:bg-teal-700">
+                <Button onClick={saveJournal} className="bg-teal-600 hover:bg-teal-700" disabled={isLoading}>
                   <Save className="mr-2 h-4 w-4" />
-                  儲存
+                  {isLoading ? "儲存中..." : "儲存"}
                 </Button>
               </div>
 
@@ -457,46 +551,23 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
                   </div>
 
                   <div>
-                    <Label>常用標籤</Label>
+                    <Label>標籤</Label>
                     <div className="flex flex-wrap gap-2">
                       {availableTags.map(tag => (
-                        <Badge 
+                        <Badge
                           key={tag}
                           variant={currentEntry.tags?.includes(tag) ? "default" : "outline"}
                           className="cursor-pointer"
                           onClick={() => {
-                            const tags = currentEntry.tags || []
-                            if (tags.includes(tag)) {
-                              setCurrentEntry({...currentEntry, tags: tags.filter(t => t !== tag)})
-                            } else {
-                              setCurrentEntry({...currentEntry, tags: [...tags, tag]})
-                            }
+                            const newTags = currentEntry.tags?.includes(tag)
+                              ? currentEntry.tags.filter(t => t !== tag)
+                              : [...(currentEntry.tags || []), tag]
+                            setCurrentEntry({...currentEntry, tags: newTags})
                           }}
                         >
                           {tag}
                         </Badge>
                       ))}
-                      <Badge 
-                        variant="outline"
-                        className="cursor-pointer border-dashed border-2"
-                        onClick={() => {
-                          const newTagName = prompt('輸入新標籤名稱：')
-                          if (newTagName && newTagName.trim()) {
-                            const trimmedTag = newTagName.trim()
-                            if (!availableTags.includes(trimmedTag)) {
-                              const updatedTags = [...availableTags, trimmedTag]
-                              setAvailableTags(updatedTags)
-                              localStorage.setItem('availableTags', JSON.stringify(updatedTags))
-                            }
-                            const tags = currentEntry.tags || []
-                            if (!tags.includes(trimmedTag)) {
-                              setCurrentEntry({...currentEntry, tags: [...tags, trimmedTag]})
-                            }
-                          }
-                        }}
-                      >
-                        + 新增
-                      </Badge>
                     </div>
                   </div>
                 </div>
@@ -505,230 +576,54 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
           </Card>
         </TabsContent>
 
-        {/* 統計分析 */}
+        {/* 統計分析 (如果需要) */}
         {!hideStats && (
           <TabsContent value="stats">
             <Card>
-            <CardHeader>
-              <CardTitle>統計分析</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-medium mb-3">心情分佈</h4>
-                  <div className="space-y-2">
-                    {Object.entries(
-                      entries.reduce((acc, entry) => {
-                        acc[entry.mood] = (acc[entry.mood] || 0) + 1
-                        return acc
-                      }, {} as Record<string, number>)
-                    ).map(([mood, count]) => {
-                      const MoodIcon = moodColors[mood as keyof typeof moodColors]?.icon || Smile
-                      return (
-                        <div key={mood} className="flex items-center gap-3">
-                          <MoodIcon className="h-5 w-5" />
-                          <div className="flex-1">
-                            <div className="flex justify-between mb-1">
-                              <span className="text-sm">{
-                                mood === 'happy' ? '開心' : 
-                                mood === 'excited' ? '興奮' :
-                                mood === 'neutral' ? '平靜' :
-                                mood === 'anxious' ? '焦慮' : '難過'
-                              }</span>
-                              <span className="text-sm text-gray-500">{count} 次</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="bg-teal-500 h-2 rounded-full"
-                                style={{ width: `${(count / entries.length) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-medium mb-3">標籤統計</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {Array.from(new Set(entries.flatMap(e => e.tags))).map(tag => {
-                      const count = entries.filter(e => e.tags.includes(tag)).length
-                      return (
-                        <Badge key={tag} variant="secondary">
-                          {tag} ({count})
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              <CardContent className="p-6">
+                <h3 className="text-lg font-medium mb-4">統計分析</h3>
+                <p className="text-gray-500">統計功能開發中...</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
         )}
 
-        {/* 歷史記錄與日曆 */}
+        {/* 歷史記錄 */}
         <TabsContent value="list">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* 左側日曆 */}
-            <Card className="lg:col-span-1">
+            <Card className="md:col-span-1">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarIcon className="w-5 h-5" />
-                  日曆檢視
+                <CardTitle className="text-lg flex items-center">
+                  <CalendarIcon className="mr-2 h-5 w-5" />
+                  日曆
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {/* 圖例說明 */}
-                  <div className="space-y-2 pb-4 border-b">
-                    <p className="text-sm font-medium text-gray-600">心情標記</p>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {Object.entries(moodColors).map(([mood, { bg, text, icon: Icon }]) => (
-                        <div key={mood} className="flex items-center gap-1">
-                          <div className={`w-3 h-3 rounded-full ${bg}`} />
-                          <Icon className="w-3 h-3" />
-                          <span className={text}>
-                            {mood === 'happy' ? '開心' : 
-                             mood === 'excited' ? '興奮' :
-                             mood === 'neutral' ? '平靜' :
-                             mood === 'anxious' ? '焦慮' : '難過'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* 自定義日曆 */}
-                  <div className="calendar-container">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={(date) => {
-                        setSelectedDate(date)
-                        // 如果選擇的日期有記錄，顯示該記錄
-                        if (date) {
-                          const dateStr = date.toISOString().split('T')[0]
-                          const entry = entries.find(e => e.date === dateStr)
-                          if (entry) {
-                            viewEntryDetail(entry)
-                          }
-                        }
-                      }}
-                      className="rounded-md border"
-                      components={{
-                        DayContent: ({ date }) => {
-                          const dateStr = date.toISOString().split('T')[0]
-                          const entry = entries.find(e => e.date === dateStr)
-                          const validMood = entry?.mood && Object.keys(moodColors).includes(entry.mood) ? entry.mood : null
-                          
-                          return (
-                            <div className="relative w-full h-full flex flex-col items-center justify-center p-1">
-                              <div className={`text-center ${entry ? 'font-semibold' : ''}`}>
-                                {date.getDate()}
-                              </div>
-                              {entry && validMood && (
-                                <div 
-                                  className={`absolute bottom-0.5 w-4 h-1 rounded-sm ${moodColors[validMood as keyof typeof moodColors].bg} opacity-75`}
-                                  title={`心情: ${validMood === 'happy' ? '開心' : 
-                                        validMood === 'excited' ? '興奮' :
-                                        validMood === 'neutral' ? '平靜' :
-                                        validMood === 'anxious' ? '焦慮' : '難過'}`}
-                                />
-                              )}
-                            </div>
-                          )
-                        }
-                      }}
-                    />
-                  </div>
-                  
-                  {/* 當月統計 */}
-                  <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
-                    <h4 className="text-sm font-medium text-gray-700">當月統計</h4>
-                    {(() => {
-                      const currentMonthStr = currentMonth.toISOString().slice(0, 7)
-                      const monthEntries = entries.filter(e => e.date.startsWith(currentMonthStr))
-                      const moodStats = monthEntries.reduce((acc, entry) => {
-                        const mood = entry.mood || 'neutral'
-                        acc[mood] = (acc[mood] || 0) + 1
-                        return acc
-                      }, {} as Record<string, number>)
-                      
-                      return (
-                        <div className="space-y-1">
-                          <p className="text-xs text-gray-600">
-                            記錄數：{monthEntries.length} 筆
-                          </p>
-                          {Object.entries(moodStats).length > 0 && (
-                            <div className="flex flex-wrap gap-2 text-xs">
-                              {Object.entries(moodStats).map(([mood, count]) => {
-                                const validMood = Object.keys(moodColors).includes(mood) ? mood : 'neutral'
-                                const Icon = moodColors[validMood as keyof typeof moodColors].icon
-                                return (
-                                  <div key={mood} className="flex items-center gap-1">
-                                    <Icon className="w-3 h-3" />
-                                    <span>{count}</span>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                  
-                  {/* 選中日期的記錄預覽 */}
-                  {selectedDate && (() => {
-                    const dateStr = selectedDate.toISOString().split('T')[0]
-                    const entry = entries.find(e => e.date === dateStr)
-                    if (entry) {
-                      const validMood = entry.mood && Object.keys(moodColors).includes(entry.mood) ? entry.mood : "neutral"
-                      const MoodIcon = moodColors[validMood as keyof typeof moodColors].icon
-                      
-                      return (
-                        <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-sm truncate">{entry.title}</h4>
-                            <MoodIcon className="w-4 h-4" />
-                          </div>
-                          <p className="text-xs text-gray-600 line-clamp-2">{entry.content}</p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => viewEntryDetail(entry)}
-                            className="w-full text-xs"
-                          >
-                            查看詳情
-                          </Button>
-                        </div>
-                      )
-                    }
-                    return (
-                      <div className="border rounded-lg p-3 text-center text-sm text-gray-500">
-                        {selectedDate.toLocaleDateString('zh-TW')} 無記錄
-                      </div>
-                    )
-                  })()}
-                </div>
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  className="rounded-md border"
+                  modifiers={{
+                    hasEntry: entries.map(e => new Date(e.date))
+                  }}
+                  modifiersClassNames={{
+                    hasEntry: "bg-teal-100 font-bold"
+                  }}
+                />
               </CardContent>
             </Card>
-            
+
             {/* 右側記錄列表 */}
-            <Card className="lg:col-span-2">
+            <Card className="md:col-span-2">
               <CardHeader>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle>所有記錄</CardTitle>
-                    <span className="text-sm text-gray-500">共 {entries.length} 筆</span>
-                  </div>
-                  
-                  {/* 心情篩選器 */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm text-gray-600">篩選心情：</span>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center">
+                    <TrendingUp className="mr-2 h-5 w-5" />
+                    記錄列表
+                  </CardTitle>
+                  <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant={selectedMoodFilter === null ? "default" : "outline"}
@@ -736,16 +631,14 @@ export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {
                     >
                       全部
                     </Button>
-                    {Object.entries(moodColors).map(([mood, { bg, icon: Icon }]) => (
+                    {Object.entries(moodColors).map(([mood, config]) => (
                       <Button
                         key={mood}
                         size="sm"
                         variant={selectedMoodFilter === mood ? "default" : "outline"}
                         onClick={() => setSelectedMoodFilter(mood)}
-                        className="flex items-center gap-1"
                       >
-                        <Icon className="w-3 h-3" />
-                        <span className="text-xs">
+                        <span className={config.text}>
                           {mood === 'happy' ? '開心' : 
                            mood === 'excited' ? '興奮' :
                            mood === 'neutral' ? '平靜' :

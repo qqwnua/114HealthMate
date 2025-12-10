@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MessageCircle, Heart, BookOpen, TrendingUp, Mic, Send, Loader2, Brain } from "lucide-react"
 import { SelfRecording } from "./self-recording"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { toast } from "sonner"
 
 // Types
 type Message = {
@@ -25,6 +26,22 @@ type EmotionEntry = {
   note: string
   tags: string[]
 }
+
+// 🔧 輔助函數:取得 userid  
+function getuserid(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('userid');
+}
+
+// Assessment questions
+const assessmentQuestions = [
+  { id: "sleep", question: "最近一週，您的睡眠品質如何？", options: ["很差", "較差", "普通", "良好", "很好"] },
+  { id: "mood", question: "您感到心情低落或沮喪的頻率？", options: ["經常", "時常", "偶爾", "很少", "從不"] },
+  { id: "interest", question: "對日常活動的興趣或樂趣？", options: ["完全沒有", "很少", "有一些", "正常", "很高"] },
+  { id: "energy", question: "您的精力和活力水平？", options: ["很低", "較低", "普通", "良好", "很好"] },
+  { id: "anxiety", question: "感到焦慮或緊張的程度？", options: ["非常嚴重", "嚴重", "中等", "輕微", "沒有"] },
+  { id: "concentration", question: "專注力和注意力如何？", options: ["很差", "較差", "普通", "良好", "很好"] },
+]
 
 export default function PsychologicalConsultation() {
   // Chat State
@@ -49,15 +66,12 @@ export default function PsychologicalConsultation() {
   const chartData = useMemo(() => {
     if (emotionHistory.length === 0) return []
     
-    // 計算最近7天的每日平均分數
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
     
-    // 按日期分組
     const dailyEmotions = new Map<string, number[]>()
     emotionHistory.forEach(entry => {
       const entryDate = new Date(entry.date)
-      // 只取最近7天的資料
       if (entryDate >= sevenDaysAgo) {
         const dateKey = entryDate.toISOString().split('T')[0]
         if (!dailyEmotions.has(dateKey)) {
@@ -67,7 +81,6 @@ export default function PsychologicalConsultation() {
       }
     })
     
-    // 計算每日的平均心情指數
     return Array.from(dailyEmotions.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, intensities]) => {
@@ -88,7 +101,7 @@ export default function PsychologicalConsultation() {
     let totalScore = 0
     let weightSum = 0
     
-    // 1. 歷史平均 (35%) - 基於所有情緒歷史記錄
+    // 1. 歷史平均 (35%)
     if (emotionHistory.length > 0) {
       const allIntensities = emotionHistory.map(e => e.intensity).filter(i => !isNaN(i))
       if (allIntensities.length > 0) {
@@ -99,7 +112,7 @@ export default function PsychologicalConsultation() {
       }
     }
     
-    // 2. 近期平均 (50%) - 基於最近7天的記錄
+    // 2. 近期平均 (50%)
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
     const recentEntries = emotionHistory.filter(e => new Date(e.date) >= sevenDaysAgo)
@@ -118,7 +131,6 @@ export default function PsychologicalConsultation() {
     let thirdComponentScore = 0
     let thirdComponentCount = 0
     
-    // 3a. 自我評估分數
     try {
       const savedAssessmentScore = localStorage.getItem("assessmentScore")
       if (savedAssessmentScore) {
@@ -132,13 +144,11 @@ export default function PsychologicalConsultation() {
       console.error("讀取自我評估失敗:", e)
     }
     
-    // 3b. 心靈便籤的心情分數
     try {
       const journalEntries = localStorage.getItem('journalEntries')
       if (journalEntries) {
         const entries = JSON.parse(journalEntries)
         if (Array.isArray(entries) && entries.length > 0) {
-          // 取最近7天的便籤
           const recentJournals = entries.filter((e: any) => {
             try {
               const entryDate = new Date(e.date)
@@ -149,7 +159,6 @@ export default function PsychologicalConsultation() {
           })
           
           if (recentJournals.length > 0) {
-            // 根據 mood 計算分數
             const moodScores: Record<string, number> = {
               'excited': 95,
               'happy': 85,
@@ -170,19 +179,16 @@ export default function PsychologicalConsultation() {
       console.error("讀取心靈便籤失敗:", e)
     }
     
-    // 計算第三部分的平均分數
     if (thirdComponentCount > 0) {
       const avgThirdScore = thirdComponentScore / thirdComponentCount
       totalScore += avgThirdScore * 0.15
       weightSum += 0.15
     }
     
-    // 如果沒有任何數據，返回 50 (中性)
     if (weightSum === 0) {
       return 50
     }
     
-    // 根據實際權重調整分數
     const finalScore = totalScore / weightSum
     const result = Math.max(0, Math.min(100, Math.round(finalScore)))
     return result
@@ -193,7 +199,7 @@ export default function PsychologicalConsultation() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
   
-  // Load from localStorage - 必須先載入
+  // Load from localStorage
   useEffect(() => {
     const savedEmotions = localStorage.getItem("emotionHistory")
     if (savedEmotions) {
@@ -203,42 +209,39 @@ export default function PsychologicalConsultation() {
         console.error("讀取情緒歷史失敗:", e)
       }
     }
-  }, [])
-  
-  // 更新綜合評分 - 在資料載入後計算
-  useEffect(() => {
-    const overallScore = calculateOverallScore()
-    console.log('🔢 設置綜合評分:', overallScore)
-    if (!isNaN(overallScore)) {
-      setCurrentEmotionScore(overallScore)
-    }
-  }, [emotionHistory, calculateOverallScore])
-  
-  // 監聽 localStorage 變化 (自我評估和心靈便籤)
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const overallScore = calculateOverallScore()
-      if (!isNaN(overallScore)) {
-        setCurrentEmotionScore(overallScore)
+    
+    const savedMessages = localStorage.getItem("chatMessages")
+    if (savedMessages) {
+      try {
+        const parsed = JSON.parse(savedMessages)
+        setMessages(parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: msg.timestamp ? new Date(msg.timestamp) : undefined
+        })))
+      } catch (e) {
+        console.error("讀取訊息失敗:", e)
       }
     }
-    
-    window.addEventListener('storage', handleStorageChange)
-    
-    // 每30秒檢查一次更新
-    const interval = setInterval(handleStorageChange, 30000)
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange)
-      clearInterval(interval)
+  }, [])
+  
+  // 計算綜合評分
+  useEffect(() => {
+    const score = calculateOverallScore()
+    setCurrentEmotionScore(score)
+  }, [emotionHistory, calculateOverallScore])
+  
+  // 儲存訊息到 localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        localStorage.setItem("chatMessages", JSON.stringify(messages))
+      } catch (e) {
+        console.error("儲存訊息失敗:", e)
+      }
     }
-  }, [calculateOverallScore])
+  }, [messages])
   
-  // Chat handlers
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
-  }
-  
+  // 🔧 發送訊息 - 使用原始的 handleSubmit 邏輯
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -283,7 +286,43 @@ export default function PsychologicalConsultation() {
         timestamp: new Date(),
       }
       
+      
       setMessages(prev => [...prev, assistantMessage])
+      
+      // 儲存到資料庫
+      const userId = getuserid()
+      if (userId) {
+        const sessionId = localStorage.getItem('currentSessionId') || `session_${Date.now()}`
+        localStorage.setItem('currentSessionId', sessionId)
+
+        try {
+          await fetch('/api/chat-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userid: parseInt(userId),
+              session_id: sessionId,
+              role: 'user',
+              content: userMessage.content
+            })
+          })
+
+          await fetch('/api/chat-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userid: parseInt(userId),
+              session_id: sessionId,
+              role: 'assistant',
+              content: assistantMessage.content,
+              emotion_detected: data.debug?.bert_analysis?.emotion_state,
+              emotion_score: data.debug?.bert_analysis?.risk_score ? Math.round(data.debug.bert_analysis.risk_score * 10) : null
+            })
+          })
+        } catch (dbError) {
+          console.error("儲存對話記錄失敗:", dbError)
+        }
+      }
       
       // 分析情緒並儲存到歷史記錄
       if (data.debug?.bert_analysis) {
@@ -291,9 +330,8 @@ export default function PsychologicalConsultation() {
         const emotionState = analysis.emotion_state || "中性"
         setCurrentEmotion(emotionState)
         
-        // 🔧 只有當訊息包含情緒內容時才列入追蹤
+        // 只有當訊息包含情緒內容時才列入追蹤
         if (analysis.should_track !== false) {
-          // 儲存到情緒歷史
           const intensity = Math.min(Math.round(analysis.risk_score * 10), 10)
           const newEmotionEntry: EmotionEntry = {
             id: Date.now().toString(),
@@ -307,9 +345,51 @@ export default function PsychologicalConsultation() {
           const updatedHistory = [...emotionHistory, newEmotionEntry]
           setEmotionHistory(updatedHistory)
           localStorage.setItem("emotionHistory", JSON.stringify(updatedHistory))
+          
+          // 儲存到 emotion_records 資料庫
+          const userId = getuserid()
+          if (userId) {
+            try {
+              // 計算 mood_score: 50%近期 + 35%歷史 + 15%自我評估
+              let moodScore = null
+              
+              // 1. 近期情緒平均 (最近5筆)
+              const recentEmotions = emotionHistory.slice(-5)
+              const recentAvg = recentEmotions.length > 0
+                ? recentEmotions.reduce((sum, e) => sum + (10 - e.intensity), 0) / recentEmotions.length
+                : 5
+              
+              // 2. 歷史情緒平均 (全部)
+              const historyAvg = emotionHistory.length > 0
+                ? emotionHistory.reduce((sum, e) => sum + (10 - e.intensity), 0) / emotionHistory.length
+                : 5
+              
+              // 3. 自我評估分數 (從 localStorage 讀取最近一次)
+              const lastAssessmentScore = parseFloat(localStorage.getItem("assessmentScore") || "50")
+              
+              // 加權計算
+              moodScore = Math.round(
+                (recentAvg * 0.5 + historyAvg * 0.35 + (lastAssessmentScore / 10) * 0.15) * 10
+              )
+              
+              await fetch('/api/emotion-records', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userid: parseInt(userId),
+                  emotion_state: emotionState,
+                  intensity: intensity,
+                  mood_score: moodScore,
+                  risk_score: analysis.risk_score || null,
+                  bert_analysis: analysis,
+                  trigger_message: userMessage.content
+                })
+              })
+            } catch (error) {
+              console.error("儲存情緒記錄失敗:", error)
+            }
+          }
         }
-        
-        // 綜合評分會由 useEffect 自動更新
       }
       
     } catch (error: any) {
@@ -336,190 +416,183 @@ export default function PsychologicalConsultation() {
     }
   }
   
-  // Self Assessment Questions
-  const assessmentQuestions = [
-    { id: "sleep", question: "最近一週，您的睡眠品質如何？", options: ["很差", "較差", "普通", "良好", "很好"] },
-    { id: "mood", question: "您感到心情低落或沮喪的頻率？", options: ["經常", "時常", "偶爾", "很少", "從不"] },
-    { id: "interest", question: "對日常活動的興趣或樂趣？", options: ["完全沒有", "很少", "有一些", "正常", "很高"] },
-    { id: "energy", question: "您的精力和活力水平？", options: ["很低", "較低", "普通", "良好", "很好"] },
-    { id: "anxiety", question: "感到焦慮或緊張的程度？", options: ["非常嚴重", "嚴重", "中等", "輕微", "沒有"] },
-    { id: "concentration", question: "專注力和注意力如何？", options: ["很差", "較差", "普通", "良好", "很好"] },
-  ]
-  
+  // Handle assessment change
   const handleAssessmentChange = (questionId: string, value: number) => {
     setAssessmentAnswers(prev => ({ ...prev, [questionId]: value }))
   }
   
-  const calculateAssessment = () => {
-    const totalQuestions = assessmentQuestions.length
-    const answeredQuestions = Object.keys(assessmentAnswers).length
+  // Calculate assessment
+  const calculateAssessment = async () => {
+    // 計算總分 - 所有選項都是左差右好,不需反轉
+    const scores = Object.values(assessmentAnswers)
     
-    if (answeredQuestions < totalQuestions) {
-      alert("請完成所有問題")
-      return
-    }
-    
-    const totalScore = Object.values(assessmentAnswers).reduce((sum, val) => sum + val, 0)
-    const maxScore = totalQuestions * 4
-    const percentage = Math.round((totalScore / maxScore) * 100)
-    
-    // 儲存評估分數
-    localStorage.setItem("assessmentScore", percentage.toString())
-    
-    // 立即更新綜合評分
-    const overallScore = calculateOverallScore()
-    setCurrentEmotionScore(overallScore)
-    
-    // 根據分數給予不同的鼓勵話語
-    let encouragementMessage = ""
-    if (percentage >= 70) {
-      encouragementMessage = "很棒！從評估結果來看，你目前的狀態很不錯。繼續保持這樣的生活節奏，也記得適時給自己一些休息時間喔。"
-    } else if (percentage >= 40) {
-      encouragementMessage = "感謝你願意花時間了解自己的狀態。每個人都會有起伏，這很正常。記得多照顧自己，有需要的話隨時可以來聊聊天。"
-    } else {
-      encouragementMessage = "謝謝你完成這份評估。我注意到你最近可能過得比較辛苦。記得，尋求協助是一種勇氣的表現。如果需要，也可以考慮與專業人士聊聊，他們能提供更完善的支持。"
-    }
-    
-    // 彈出完成視窗
-    alert(`✨ 評估完成\n\n${encouragementMessage}`)
-    
-    // 清空表單
-    setAssessmentAnswers({})
-    
-    // 跳轉到情緒追蹤頁面
-    setActiveTab("emotion")
-  }
-  
-  return (
-    <div className="container mx-auto p-4 max-w-6xl">
-      <h1 className="text-3xl font-bold mb-6 text-teal-700">心理諮詢系統</h1>
+    const totalScore = scores.reduce((a, b) => a + b, 0)
+    const maxScore = assessmentQuestions.length * 4
+    const percentage = (totalScore / maxScore) * 100
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="chat" className="flex items-center gap-2">
-            <MessageCircle className="w-4 h-4" />
-            AI 諮詢
-          </TabsTrigger>
-          <TabsTrigger value="emotion" className="flex items-center gap-2">
-            <Heart className="w-4 h-4" />
-            情緒追蹤
-          </TabsTrigger>
-          <TabsTrigger value="assessment" className="flex items-center gap-2">
-            <Brain className="w-4 h-4" />
-            自我評估
-          </TabsTrigger>
-          <TabsTrigger value="journal" className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4" />
-            心靈便箋
-          </TabsTrigger>
+    let result = ""
+    if (percentage >= 75) {
+      result = "狀態良好 - 保持良好的生活習慣"
+    } else if (percentage >= 50) {
+      result = "輕度壓力 - 建議進行放鬆練習和壓力管理"
+    } else if (percentage >= 25) {
+      result = "中度壓力 - 建議諮詢心理健康專業人員"
+    } else {
+      result = "較高壓力 - 強烈建議尋求專業心理諮詢"
+    }
+
+    setAssessmentScore(result)
+    localStorage.setItem("assessmentScore", percentage.toString())
+    toast.success("評估完成!")
+    
+    // 儲存到資料庫
+    const userid = getuserid()
+    if (userid) {
+      try {
+        // 提取各項分數
+        const sleep = assessmentAnswers.sleep || 0
+        const mood = assessmentAnswers.mood || 0
+        const interest = assessmentAnswers.interest || 0
+        const energy = assessmentAnswers.energy || 0
+        const anxiety = assessmentAnswers.anxiety || 0
+        const concentration = assessmentAnswers.concentration || 0
+        
+        await fetch('/api/self-assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userid: parseInt(userid),
+            assessment_type: 'psychological',
+            answers: assessmentAnswers,
+            anxiety_level: anxiety,
+            stress_level: mood,
+            mood_stability: sleep,
+            happiness_level: interest,
+            social_satisfaction: energy,
+            confidence_level: concentration,
+            total_score: Math.round(percentage)
+          })
+        })
+      } catch (error) {
+        console.error("儲存評估失敗:", error)
+      }
+    }
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto p-4 space-y-6">
+      <CardHeader className="px-0">
+        <CardTitle className="text-2xl text-teal-600 flex items-center">
+          <Brain className="mr-2" />
+          心理諮詢與情緒追蹤
+        </CardTitle>
+      </CardHeader>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid grid-cols-4">
+          <TabsTrigger value="chat">AI 諮詢對話</TabsTrigger>
+          <TabsTrigger value="tracking">情緒追蹤</TabsTrigger>
+          <TabsTrigger value="assessment">自我評估</TabsTrigger>
+          <TabsTrigger value="journal">心靈便籤</TabsTrigger>
         </TabsList>
 
         {/* Tab 1: Chat */}
         <TabsContent value="chat">
-          <Card>
+          <Card className="h-[600px] flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageCircle className="w-5 h-5 text-teal-600" />
-                心理諮詢機器人
+                AI 心理諮詢
               </CardTitle>
               <CardDescription>
-                此系統提供的建議僅供參考，不能替代專業心理諮詢
+                與 AI 進行對話,分享您的感受和困擾
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="h-[400px] overflow-y-auto border rounded-lg p-4 space-y-4 bg-gray-50">
-                  {messages.length === 0 && (
-                    <div className="text-center text-gray-400 py-20">
-                      <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                      <p>開始對話...</p>
-                      <p className="text-sm mt-2">我會用溫暖的語氣陪伴你聊天</p>
-                    </div>
-                  )}
 
-                  {messages.map((message, index) => (
-                    <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                          message.role === "user" ? "bg-teal-600 text-white" : "bg-white border border-gray-200 text-gray-800"
-                        }`}
-                      >
-                        <div className="whitespace-pre-wrap">{message.content}</div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {isLoading && (
-                    <div className="flex justify-start">
-                      <div className="max-w-[80%] rounded-lg px-4 py-2 bg-white border border-gray-200">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span className="text-gray-600">思考中...</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div ref={messagesEndRef} />
+            <CardContent className="flex-1 overflow-y-auto space-y-4 p-4">
+              {messages.length === 0 ? (
+                <div className="text-center text-gray-500 mt-20">
+                  <Brain className="h-12 w-12 mx-auto mb-4 text-teal-500" />
+                  <p>您好!我是您的 AI 心理諮詢師。</p>
+                  <p className="text-sm">有什麼我可以幫助您的嗎?</p>
                 </div>
-
-                <form onSubmit={handleSubmit} className="space-y-2">
-                  <Textarea
-                    value={input}
-                    onChange={handleInputChange}
-                    placeholder="請描述您的心理困擾或問題..."
-                    className="min-h-[100px] resize-none"
-                    disabled={isLoading}
-                  />
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      disabled={isLoading}
+              ) : (
+                messages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-lg p-3 ${
+                        msg.role === "user"
+                          ? "bg-teal-600 text-white"
+                          : "bg-gray-100 text-gray-900"
+                      }`}
                     >
-                      <Mic className="w-4 h-4" />
-                    </Button>
-                    <Button 
-                      type="submit" 
-                      disabled={isLoading || !input.trim()}
-                      className="bg-teal-600 hover:bg-teal-700"
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          思考中
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4 mr-2" />
-                          發送
-                        </>
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      {msg.timestamp && (
+                        <p className="text-xs mt-1 opacity-70">
+                          {new Date(msg.timestamp).toLocaleTimeString('zh-TW')}
+                        </p>
                       )}
-                    </Button>
+                    </div>
                   </div>
-                </form>
-              </div>
+                ))
+              )}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-lg p-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-teal-600" />
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
             </CardContent>
+
+            <div className="p-4 border-t">
+              <form onSubmit={handleSubmit} className="flex gap-2">
+                <Textarea
+                  placeholder="輸入您的想法..."
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSubmit(e)
+                    }
+                  }}
+                  rows={2}
+                  className="flex-1"
+                  disabled={isLoading}
+                />
+                <Button
+                  type="submit"
+                  disabled={isLoading || !input.trim()}
+                  size="lg"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </form>
+            </div>
           </Card>
         </TabsContent>
 
         {/* Tab 2: Emotion Tracking */}
-        <TabsContent value="emotion">
+        <TabsContent value="tracking">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Heart className="w-5 h-5 text-teal-600" />
-                情緒狀態追蹤
+                情緒追蹤
               </CardTitle>
               <CardDescription>
-                追蹤和了解您的情緒變化
+                查看您的情緒變化和心理健康狀態
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Current Score */}
-              <div className="p-6 bg-gradient-to-br from-teal-50 to-blue-50 rounded-lg">
-                <div className="flex items-center justify-between mb-4">
+              <div className="p-6 bg-gradient-to-r from-teal-50 to-blue-50 rounded-lg">
+                <div className="flex justify-between items-center mb-4">
                   <div>
                     <h3 className="text-lg font-semibold">當前情緒評分</h3>
                     <p className="text-sm text-gray-600">基於最近的對話和評估</p>
@@ -564,7 +637,6 @@ export default function PsychologicalConsultation() {
                   </div>
                 ) : (
                   <>
-                    {/* 折線圖 - 使用 recharts */}
                     <div className="mb-6 p-4 bg-white border rounded-lg">
                       <h4 className="text-sm font-semibold mb-3 text-gray-700">
                         情緒趨勢圖 (最近7天)
@@ -573,8 +645,7 @@ export default function PsychologicalConsultation() {
                         <div style={{ width: '100%', height: '256px' }} className="flex items-center justify-center text-gray-400">
                           <div className="text-center">
                             <Heart className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                            <p>尚無情緒記錄</p>
-                            <p className="text-sm mt-2">開始對話來追蹤您的情緒變化</p>
+                            <p>尚無最近7天的記錄</p>
                           </div>
                         </div>
                       ) : (
@@ -601,21 +672,6 @@ export default function PsychologicalConsultation() {
                                     borderRadius: '8px',
                                     padding: '8px'
                                   }}
-                                  formatter={(value: any, name: string, props: any) => {
-                                    if (name === '心情指數') {
-                                      const score = value as number
-                                      const recordCount = props.payload?.記錄數 || 0
-                                      let mood = ''
-                                      if (score >= 70) mood = '開心 😊'
-                                      else if (score >= 40) mood = '一般 😐'
-                                      else mood = '不開心 😔'
-                                      return [
-                                        `${value} 分 (${mood})`,
-                                        `當日 ${recordCount} 筆記錄`
-                                      ]
-                                    }
-                                    return [value, name]
-                                  }}
                                 />
                                 <Line 
                                   type="monotone" 
@@ -623,26 +679,8 @@ export default function PsychologicalConsultation() {
                                   stroke="#14b8a6" 
                                   strokeWidth={3}
                                   connectNulls={true}
-                                  dot={(props: any) => {
-                                    const { cx, cy, payload } = props
-                                    if (!cx || !cy) return <></>
-                                    const score = payload['心情指數']
-                                    let color = '#ef4444' // 紅色 (不開心)
-                                    if (score >= 70) color = '#10b981' // 綠色 (開心)
-                                    else if (score >= 40) color = '#eab308' // 黃色 (一般)
-                                    
-                                    return (
-                                      <circle 
-                                        cx={cx} 
-                                        cy={cy} 
-                                        r={6} 
-                                        fill={color}
-                                        stroke="white"
-                                        strokeWidth={2}
-                                      />
-                                    )
-                                  }}
-                                  activeDot={{ r: 8, stroke: '#14b8a6', strokeWidth: 2, fill: 'white' }}
+                                  dot={{ r: 6, fill: '#14b8a6', stroke: 'white', strokeWidth: 2 }}
+                                  activeDot={{ r: 8 }}
                                 />
                               </LineChart>
                             </ResponsiveContainer>
@@ -709,6 +747,13 @@ export default function PsychologicalConsultation() {
               >
                 完成評估
               </Button>
+
+              {assessmentScore && (
+                <div className="p-4 bg-teal-50 rounded-lg">
+                  <h3 className="font-medium mb-2">評估結果</h3>
+                  <p className="text-lg">{assessmentScore}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

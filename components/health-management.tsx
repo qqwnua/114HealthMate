@@ -163,33 +163,45 @@ export function HealthManagement() {
   const handleSaveData = async (type: string, data: any) => {
     const userId = localStorage.getItem("userId");
     const { date, ...healthData } = data;
+    
+    // 1. 初始化最終的 Payload
+    let finalPayload: any = { userId, recordDate: date };
 
+    // 2. 根據數據類型 (type) 進行型別轉換與鍵名映射
+    if (type === "weight" && healthData.value) {
+        // 體重：將 value 轉換為 number (包含小數)，並使用 weight 鍵
+        finalPayload.weight = parseFloat(healthData.value); 
+    } else if (type === "bloodSugar" && healthData.value) {
+        // 血糖：將 value 轉換為 number，並使用 bloodSugar 鍵，保留 type
+        finalPayload.bloodSugar = parseFloat(healthData.value);
+        finalPayload.bloodSugarType = healthData.type;
+    } else if (type === "bloodPressure") {
+        // 血壓：將收縮壓 (systolic) 和舒張壓 (diastolic) 轉換為 number
+        finalPayload.systolic = parseFloat(healthData.systolic);
+        finalPayload.diastolic = parseFloat(healthData.diastolic);
+    } else if (type === "bloodLipids") {
+        // 血脂：將所有血脂相關數值轉換為 number，並使用正確的鍵名
+        finalPayload.totalCholesterol = parseFloat(healthData.total);
+        finalPayload.hdl = parseFloat(healthData.hdl);
+        finalPayload.ldl = parseFloat(healthData.ldl);
+        finalPayload.triglycerides = parseFloat(healthData.tri);
+    }
+    
+    // 3. 執行 API 呼叫，使用修正後的 finalPayload
     try {
         await fetch('/api/health_records', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, recordDate: date, ...healthData })
+            body: JSON.stringify(finalPayload) // <--- ✅ 這裡使用修正後的物件
         });
         setOpenDialog(null);
         toast({ title: "數據已儲存", description: "正在更新圖表與 AI 分析..." });
+        // 儲存成功後，重新獲取資料並觸發 AI 分析
         await fetchDataAndAnalyze();
     } catch (error) {
         console.error("Save failed", error);
         toast({ title: "儲存失敗", variant: "destructive" });
     }
-  };
-
-  const getLatest = (key: keyof HealthRecord) => {
-    if (historyData.length === 0) return "--";
-    
-    // 從最後一筆往回找，找到第一個有值的
-    for (let i = historyData.length - 1; i >= 0; i--) {
-      const val = historyData[i][key];
-      if (val !== undefined && val !== null && val !== "") {
-        return val;
-      }
-    }
-    return "--";
   };
 
   const getRiskBadgeColor = (level: string) => {
@@ -207,6 +219,24 @@ export function HealthManagement() {
         return <Badge variant="outline">未評估</Badge>;
     }
     return data.status ? <Badge variant="destructive">高風險</Badge> : <Badge variant="secondary">正常</Badge>;
+  };
+
+  const getLatest = (key: keyof HealthRecord) => {
+    if (historyData.length === 0) return "--";
+    
+    // 從最後一筆往回找，找到第一個有值的
+    for (let i = historyData.length - 1; i >= 0; i--) {
+      const val = historyData[i][key];
+      // 確保值不是 undefined, null, 或空字串
+      if (val !== undefined && val !== null && val !== "") { 
+        // 為了顯示友好，如果它是數值，我們進行四捨五入
+        if (typeof val === 'number') {
+            return parseFloat(val.toFixed(1)); 
+        }
+        return val;
+      }
+    }
+    return "--";
   };
 
   return (
@@ -498,7 +528,7 @@ export function HealthManagement() {
                     
                     <div className="bg-teal-50/50 rounded-lg p-5 border border-teal-100">
                       <ul className="space-y-3">
-                        {latestAnalysis.suggestions.map((item, idx) => (
+                        {(latestAnalysis?.suggestions ?? []).map((item, idx) => (
                           <li key={idx} className="flex items-start text-sm text-gray-700 leading-relaxed font-medium">
                             <span className="mr-3 text-teal-500">•</span>
                             {item}

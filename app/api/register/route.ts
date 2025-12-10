@@ -24,16 +24,16 @@ export async function POST(req: NextRequest) {
     // 4. 建立空的個人資訊
     await client.query(
       `INSERT INTO personal_info 
-       (user_id, name, gender, birthdate, address, avatar_url)
-       VALUES ($1, '', '', NULL, '', '/placeholder.svg')`,
+       (user_id, name, gender, birthdate, address)
+       VALUES ($1, '', '', NULL, '')`,
       [userId]
     );
 
     // 5. 建立空的健康資訊
     await client.query(
       `INSERT INTO health_info 
-       (user_id, height, weight, blood_type, allergies, medications, medical_history, chronic_diseases, family_history)
-       VALUES ($1, NULL, NULL, '', '', '', '', '', '')`,
+       (user_id, height, weight, blood_type, allergies, medications, medical_history, family_history)
+       VALUES ($1, NULL, NULL, '', '', '', '', '')`,
       [userId]
     );
 
