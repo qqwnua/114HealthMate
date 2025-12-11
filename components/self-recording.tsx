@@ -79,7 +79,7 @@ const weatherIcons = {
 // 🔧 輔助函數:取得 userid
 function getuserid(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('userid');
+  return localStorage.getItem('userId');
 }
 
 export function SelfRecording({ hideStats = false }: { hideStats?: boolean } = {}) {

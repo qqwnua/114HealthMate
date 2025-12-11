@@ -22,7 +22,7 @@ import {
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 // 如果您的環境沒有安裝 ai/react，這一行可能會報錯。如果報錯，請暫時註解掉並移除下方的 useChat 相關程式碼
-import { useChat } from "ai/react"
+//import { useChat } from "ai/react"
 import { toast } from "@/hooks/use-toast"
 
 // --- TypeScript 類型定義 ---
@@ -113,13 +113,13 @@ export function HealthPlanGenerator() {
   const [assistantDialogOpen, setAssistantDialogOpen] = useState(false)
   
   // 使用 Vercel AI SDK 的 hook
-  const { messages, input, handleInputChange, handleSubmit, isLoading: isChatLoading } = useChat({
-    api: "/api/health-assistant",
-    onError: (err) => {
-      console.error("Chat Error:", err);
-      // 這裡不顯示 toast 以免干擾主流程，僅記錄錯誤
-    }
-  })
+  // const { messages, input, handleInputChange, handleSubmit, isLoading: isChatLoading } = useChat({
+  //   api: "/api/health-assistant",
+  //   onError: (err) => {
+  //     console.error("Chat Error:", err);
+  //     // 這裡不顯示 toast 以免干擾主流程，僅記錄錯誤
+  //   }
+  // })
   
   // --- useEffect 抓取資料 ---
   useEffect(() => {

@@ -15,13 +15,13 @@ export async function GET(req: NextRequest) {
 
     let sql = `
       SELECT 
-        assessment_id, userid, assessment_type, answers,
+        assessment_id, user_id, assessment_type, answers,
         total_score, anxiety_score as anxiety_level, stress_score as stress_level, 
         mood_score as mood_stability, happiness_score as happiness_level, 
         social_score as social_satisfaction, confidence_score as confidence_level,
         notes, completed_at
       FROM self_assessments 
-      WHERE userid = $1
+      WHERE user_id = $1
     `;
 
     const params: any[] = [userid];
@@ -78,9 +78,9 @@ export async function POST(req: NextRequest) {
 
     const sql = `
       INSERT INTO self_assessments 
-      (userid, assessment_type, answers, total_score,
-       anxiety_score, stress_score, mood_score, happiness_score, 
-       social_score, confidence_score, notes)
+      (user_id, assessment_type, answers, total_score,
+      anxiety_score, stress_score, mood_score, happiness_score, 
+      social_score, confidence_score, notes)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
@@ -137,7 +137,7 @@ export async function DELETE(req: NextRequest) {
 
     const sql = `
       DELETE FROM self_assessments 
-      WHERE assessment_id = $1 AND userid = $2
+      WHERE assessment_id = $1 AND user_id = $2
       RETURNING assessment_id
     `;
 

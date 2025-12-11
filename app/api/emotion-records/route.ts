@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     const sql = `
       INSERT INTO emotion_records 
-      (userid, emotion_state, intensity, mood_score, risk_score, 
+      (user_id, emotion_state, intensity, mood_score, risk_score, 
        bert_analysis, trigger_message, recorded_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       RETURNING *
@@ -70,10 +70,10 @@ export async function GET(req: NextRequest) {
 
     let sql = `
       SELECT 
-        record_id, userid, emotion_state, intensity, mood_score,
+        record_id, user_id, emotion_state, intensity, mood_score,
         risk_score, bert_analysis, trigger_message, recorded_at
       FROM emotion_records 
-      WHERE userid = $1
+      WHERE user_id = $1
     `;
 
     const params: any[] = [userid];
@@ -116,7 +116,7 @@ export async function DELETE(req: NextRequest) {
 
     const sql = `
       DELETE FROM emotion_records 
-      WHERE record_id = $1 AND userid = $2
+      WHERE record_id = $1 AND user_id = $2
       RETURNING record_id
     `;
 

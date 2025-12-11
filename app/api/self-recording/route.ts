@@ -17,11 +17,11 @@ export async function GET(req: NextRequest) {
 
     let sql = `
       SELECT 
-        id, userid, entry_date, title, content, mood, weather, 
+        id, user_id, entry_date, title, content, mood, weather, 
         tags, attachments, sleep_hours, exercise_minutes, water_ml, 
         stress_level, mood_score, created_at, updated_at
       FROM self_recording 
-      WHERE userid = $1
+      WHERE user_id = $1
     `;
     const params: any[] = [userid];
     let paramIndex = 2;
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
 
     const sql = `
       INSERT INTO self_recording 
-      (userid, entry_date, title, content, mood, weather, tags, attachments, 
+      (user_id, entry_date, title, content, mood, weather, tags, attachments, 
        sleep_hours, exercise_minutes, water_ml, stress_level, mood_score)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
@@ -174,7 +174,7 @@ export async function PUT(req: NextRequest) {
         water_ml = COALESCE($11, water_ml),
         stress_level = COALESCE($12, stress_level),
         updated_at = now()
-      WHERE id = $1 AND userid = $2
+      WHERE id = $1 AND user_id = $2
       RETURNING *
     `;
 
@@ -230,7 +230,7 @@ export async function DELETE(req: NextRequest) {
 
     const sql = `
       DELETE FROM self_recording 
-      WHERE id = $1 AND userid = $2
+      WHERE id = $1 AND user_id = $2
       RETURNING id
     `;
 

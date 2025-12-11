@@ -16,10 +16,10 @@ export async function GET(req: NextRequest) {
 
     let sql = `
       SELECT 
-        message_id, userid, session_id, role, content,
+        message_id, user_id, session_id, role, content,
         emotion_detected, risk_score, bert_analysis, created_at
       FROM psych_messages 
-      WHERE userid = $1
+      WHERE user_id = $1
     `;
     const params: any[] = [userid];
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
     const sql = `
       INSERT INTO psych_messages 
-      (userid, session_id, role, content, emotion_detected, risk_score, bert_analysis)
+      (user_id, session_id, role, content, emotion_detected, risk_score, bert_analysis)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
@@ -127,17 +127,19 @@ export async function DELETE(req: NextRequest) {
 
     if (message_id) {
       // 刪除單一訊息
+      // 🔧 修正 3：WHERE 條件將 userid 改為 user_id
       sql = `
         DELETE FROM psych_messages 
-        WHERE message_id = $1 AND userid = $2
+        WHERE message_id = $1 AND user_id = $2
         RETURNING message_id
       `;
       params = [message_id, userid];
     } else if (session_id) {
       // 刪除整個 session
+      // 🔧 修正 4：WHERE 條件將 userid 改為 user_id
       sql = `
         DELETE FROM psych_messages 
-        WHERE session_id = $1 AND userid = $2
+        WHERE session_id = $1 AND user_id = $2
         RETURNING message_id
       `;
       params = [session_id, userid];
