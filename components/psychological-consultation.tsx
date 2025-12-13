@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { MessageCircle, Heart, BookOpen, TrendingUp, Mic, Send, Loader2, Brain } from "lucide-react"
+import { MessageCircle, Heart, BookOpen, TrendingUp, Mic, Send, Loader2, Brain, AlertCircle } from "lucide-react"
 import { SelfRecording } from "./self-recording"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { toast } from "sonner"
@@ -45,6 +45,21 @@ const assessmentQuestions = [
 ]
 
 export default function PsychologicalConsultation() {
+
+  const userId = getuserid(); 
+
+  // ⭐ [新增] 未登入時顯示的元件
+  const LoginRequired = () => (
+    <div className="p-8 text-center max-w-sm mx-auto border rounded-md bg-gray-50">
+        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900">請先登入</h3>
+        <p className="text-gray-500 mt-2">此功能為個人化服務，登入後即可查看及編輯您的資料。</p>
+        <Button className="mt-4 bg-teal-600 hover:bg-teal-700" onClick={() => window.location.href = '/login'}>
+            前往登入
+        </Button>
+    </div>
+  );
+
   // Chat State
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -538,8 +553,8 @@ export default function PsychologicalConsultation() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-4">
           <TabsTrigger value="chat">AI 諮詢對話</TabsTrigger>
-          <TabsTrigger value="tracking">情緒追蹤</TabsTrigger>
           <TabsTrigger value="assessment">自我評估</TabsTrigger>
+          <TabsTrigger value="tracking">情緒追蹤</TabsTrigger>
           <TabsTrigger value="journal">心靈便籤</TabsTrigger>
         </TabsList>
 
@@ -626,133 +641,137 @@ export default function PsychologicalConsultation() {
 
         {/* Tab 2: Emotion Tracking */}
         <TabsContent value="tracking">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Heart className="w-5 h-5 text-teal-600" />
-                情緒追蹤
-              </CardTitle>
-              <CardDescription>
-                查看您的情緒變化和心理健康狀態
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Current Score */}
-              <div className="p-6 bg-gradient-to-r from-teal-50 to-blue-50 rounded-lg">
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold">當前情緒評分</h3>
-                    <p className="text-sm text-gray-600">基於最近的對話和評估</p>
+          {userId ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-teal-600" />
+                  情緒追蹤
+                </CardTitle>
+                <CardDescription>
+                  查看您的情緒變化和心理健康狀態
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Current Score */}
+                <div className="p-6 bg-gradient-to-r from-teal-50 to-blue-50 rounded-lg">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">當前情緒評分</h3>
+                      <p className="text-sm text-gray-600">基於最近的對話和評估</p>
+                    </div>
+                    <div className="text-4xl font-bold text-teal-600">
+                      {currentEmotionScore}
+                    </div>
                   </div>
-                  <div className="text-4xl font-bold text-teal-600">
-                    {currentEmotionScore}
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className={`h-3 rounded-full transition-all ${
+                        currentEmotionScore >= 70
+                          ? "bg-green-500"
+                          : currentEmotionScore >= 40
+                          ? "bg-yellow-500"
+                          : "bg-red-500"
+                      }`}
+                      style={{ width: `${currentEmotionScore}%` }}
+                    />
                   </div>
+                  <p className="text-sm text-gray-600 mt-2">
+                    {currentEmotionScore >= 70
+                      ? "您的情緒狀態良好 😊"
+                      : currentEmotionScore >= 40
+                      ? "您的情緒狀態一般 😐"
+                      : "建議尋求專業協助 😔"}
+                  </p>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className={`h-3 rounded-full transition-all ${
-                      currentEmotionScore >= 70
-                        ? "bg-green-500"
-                        : currentEmotionScore >= 40
-                        ? "bg-yellow-500"
-                        : "bg-red-500"
-                    }`}
-                    style={{ width: `${currentEmotionScore}%` }}
-                  />
-                </div>
-                <p className="text-sm text-gray-600 mt-2">
-                  {currentEmotionScore >= 70
-                    ? "您的情緒狀態良好 😊"
-                    : currentEmotionScore >= 40
-                    ? "您的情緒狀態一般 😐"
-                    : "建議尋求專業協助 😔"}
-                </p>
-              </div>
 
-              {/* History */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5" />
-                  近期情緒趨勢
-                </h3>
-                
-                {emotionHistory.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">
-                    <Heart className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>尚無情緒記錄</p>
-                    <p className="text-sm mt-2">開始對話來追蹤您的情緒變化</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="mb-6 p-4 bg-white border rounded-lg">
-                      <h4 className="text-sm font-semibold mb-3 text-gray-700">
-                        情緒趨勢圖 (最近7天)
-                      </h4>
-                      {chartData.length === 0 ? (
-                        <div style={{ width: '100%', height: '256px' }} className="flex items-center justify-center text-gray-400">
-                          <div className="text-center">
-                            <Heart className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                            <p>尚無最近7天的記錄</p>
+                {/* History */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    近期情緒趨勢
+                  </h3>
+                  
+                  {emotionHistory.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Heart className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>尚無情緒記錄</p>
+                      <p className="text-sm mt-2">開始對話來追蹤您的情緒變化</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-6 p-4 bg-white border rounded-lg">
+                        <h4 className="text-sm font-semibold mb-3 text-gray-700">
+                          情緒趨勢圖 (最近7天)
+                        </h4>
+                        {chartData.length === 0 ? (
+                          <div style={{ width: '100%', height: '256px' }} className="flex items-center justify-center text-gray-400">
+                            <div className="text-center">
+                              <Heart className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                              <p>尚無最近7天的記錄</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ width: '100%', height: '256px' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={chartData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                                  <XAxis 
+                                    dataKey="date" 
+                                    tick={{ fill: '#6b7280', fontSize: 12 }}
+                                    stroke="#9ca3af"
+                                  />
+                                  <YAxis 
+                                    domain={[0, 100]}
+                                    ticks={[0, 25, 50, 75, 100]}
+                                    tick={{ fill: '#6b7280', fontSize: 12 }}
+                                    stroke="#9ca3af"
+                                    label={{ value: '心情指數', angle: -90, position: 'insideLeft', fill: '#6b7280' }}
+                                  />
+                                  <Tooltip 
+                                    contentStyle={{ 
+                                      backgroundColor: 'white', 
+                                      border: '1px solid #e5e7eb',
+                                      borderRadius: '8px',
+                                      padding: '8px'
+                                    }}
+                                  />
+                                  <Line 
+                                    type="monotone" 
+                                    dataKey="心情指數" 
+                                    stroke="#14b8a6" 
+                                    strokeWidth={3}
+                                    connectNulls={true}
+                                    dot={{ r: 6, fill: '#14b8a6', stroke: 'white', strokeWidth: 2 }}
+                                    activeDot={{ r: 8 }}
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                          </div>
+                        )}
+                        <div className="mt-4 flex justify-center gap-4 text-xs text-gray-600">
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                            <span>開心 (70-100分)</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                            <span>一般 (40-69分)</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                            <span>不開心 (0-39分)</span>
                           </div>
                         </div>
-                      ) : (
-                        <div style={{ width: '100%', height: '256px' }}>
-                          <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={chartData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis 
-                                  dataKey="date" 
-                                  tick={{ fill: '#6b7280', fontSize: 12 }}
-                                  stroke="#9ca3af"
-                                />
-                                <YAxis 
-                                  domain={[0, 100]}
-                                  ticks={[0, 25, 50, 75, 100]}
-                                  tick={{ fill: '#6b7280', fontSize: 12 }}
-                                  stroke="#9ca3af"
-                                  label={{ value: '心情指數', angle: -90, position: 'insideLeft', fill: '#6b7280' }}
-                                />
-                                <Tooltip 
-                                  contentStyle={{ 
-                                    backgroundColor: 'white', 
-                                    border: '1px solid #e5e7eb',
-                                    borderRadius: '8px',
-                                    padding: '8px'
-                                  }}
-                                />
-                                <Line 
-                                  type="monotone" 
-                                  dataKey="心情指數" 
-                                  stroke="#14b8a6" 
-                                  strokeWidth={3}
-                                  connectNulls={true}
-                                  dot={{ r: 6, fill: '#14b8a6', stroke: 'white', strokeWidth: 2 }}
-                                  activeDot={{ r: 8 }}
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                      )}
-                      <div className="mt-4 flex justify-center gap-4 text-xs text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                          <span>開心 (70-100分)</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                          <span>一般 (40-69分)</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                          <span>不開心 (0-39分)</span>
-                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <LoginRequired />
+          )}
         </TabsContent>
 
         {/* Tab 3: Self Assessment */}
@@ -827,7 +846,11 @@ export default function PsychologicalConsultation() {
 
         {/* Tab 4: Journal */}
         <TabsContent value="journal">
-          <SelfRecording hideStats={true} />
+          {userId ? (
+            <SelfRecording hideStats={true} />
+          ) : (
+            <LoginRequired />
+          )}
         </TabsContent>
       </Tabs>
     </div>
