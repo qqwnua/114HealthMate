@@ -258,14 +258,17 @@ useEffect(() => {
       if (preferences.darkMode) document.documentElement.classList.add("dark");
       else document.documentElement.classList.remove("dark");
 
-      document.body.classList.remove(
+      const root = document.documentElement; // ⭐ html
+
+      root.classList.remove(
         "protanopia-mode",
         "deuteranopia-mode",
         "tritanopia-mode",
         "monochrome-mode"
       );
+
       if (preferences.colorBlindMode !== "normal") {
-        document.body.classList.add(`${preferences.colorBlindMode}-mode`);
+        root.classList.add(`${preferences.colorBlindMode}-mode`);
       }
     }
     try {
@@ -361,11 +364,11 @@ const handleSaveHealthProfile = async () => {
           <TabsList className="grid grid-cols-4 mb-4">
             <TabsTrigger value="profile">基本資料</TabsTrigger>
             <TabsTrigger value="health">健康資料</TabsTrigger>
-            <TabsTrigger value="preferences">系統偏好</TabsTrigger>
+            <TabsTrigger value="preferences">無障礙設定</TabsTrigger>
             <TabsTrigger value="security">安全設定</TabsTrigger>
           </TabsList>
 
-          <div className="overflow-y-auto max-h-[65vh]">
+          <div className="overflow-y-auto h-[65vh]">
             {/* 基本資料 */}
             <TabsContent value="profile" className="space-y-6">
               <Card>
@@ -648,69 +651,10 @@ const handleSaveHealthProfile = async () => {
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-base flex items-center"><Volume2 className="mr-2 h-4 w-4" /> 文字轉語音朗讀</Label>
-                      <Switch checked={systemPreferences.textToSpeechEnabled} onCheckedChange={(checked) => handlePreferenceChange("textToSpeechEnabled", checked)} />
-                    </div>
-                    {systemPreferences.textToSpeechEnabled && <p className="text-xs text-gray-500">點擊任何文字內容即可開始朗讀。</p>}
-                  </div>
-
-                  {speaking && (
-                    <div className="flex items-center justify-between bg-teal-50 p-3 rounded-md">
-                      <span className="text-sm flex items-center"><Volume2 className="mr-2 h-4 w-4 text-teal-600 animate-pulse" /> 正在朗讀...</span>
-                      <Button variant="outline" size="sm" onClick={stopSpeaking}><X className="mr-1 h-3 w-3" /> 停止朗讀</Button>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" /> 通知設定</CardTitle></CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <h4 className="font-medium">通知方式</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>電子郵件通知</Label>
-                        <Switch checked={systemPreferences.emailNotifications} onCheckedChange={(checked) => handlePreferenceChange("emailNotifications", checked)} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label>推送通知</Label>
-                        <Switch checked={systemPreferences.pushNotifications} onCheckedChange={(checked) => handlePreferenceChange("pushNotifications", checked)} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label>簡訊通知</Label>
-                        <Switch checked={systemPreferences.smsNotifications} onCheckedChange={(checked) => handlePreferenceChange("smsNotifications", checked)} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-4">
-                    <h4 className="font-medium">健康提醒</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>健康計畫提醒</Label>
-                        <Switch checked={systemPreferences.healthReminders} onCheckedChange={(checked) => handlePreferenceChange("healthReminders", checked)} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label>預約提醒</Label>
-                        <Switch checked={systemPreferences.appointmentReminders} onCheckedChange={(checked) => handlePreferenceChange("appointmentReminders", checked)} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label>用藥提醒</Label>
-                        <Switch checked={systemPreferences.medicationReminders} onCheckedChange={(checked) => handlePreferenceChange("medicationReminders", checked)} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label>運動提醒</Label>
-                        <Switch checked={systemPreferences.exerciseReminders} onCheckedChange={(checked) => handlePreferenceChange("exerciseReminders", checked)} />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              
             </TabsContent>
 
             {/* 安全設定 */}
