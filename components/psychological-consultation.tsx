@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { MessageCircle, Heart, BookOpen, TrendingUp, Mic, Send, Loader2, Brain } from "lucide-react"
 import { SelfRecording } from "./self-recording"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
@@ -30,7 +31,7 @@ type EmotionEntry = {
 // 🔧 輔助函數:取得 userid  
 function getuserid(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('userId');
+  return localStorage.getItem('userid');
 }
 
 // Assessment questions
@@ -57,6 +58,7 @@ export default function PsychologicalConsultation() {
   // Self Assessment State
   const [assessmentAnswers, setAssessmentAnswers] = useState<Record<string, number>>({})
   const [assessmentScore, setAssessmentScore] = useState<string | null>(null)
+  const [showResultDialog, setShowResultDialog] = useState(false)
   
   // UI State
   const [activeTab, setActiveTab] = useState("chat")
@@ -199,16 +201,34 @@ export default function PsychologicalConsultation() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
   
-  // Load from localStorage
+  // Load emotion history from database
   useEffect(() => {
-    const savedEmotions = localStorage.getItem("emotionHistory")
-    if (savedEmotions) {
+    const loadEmotionHistory = async () => {
+      const userid = getuserid()
+      if (!userid) return
+
       try {
-        setEmotionHistory(JSON.parse(savedEmotions))
-      } catch (e) {
-        console.error("讀取情緒歷史失敗:", e)
+        const response = await fetch(`/api/emotion-records?userid=${userid}&days=30&limit=100`)
+        const data = await response.json()
+
+        if (data.success && data.records.length > 0) {
+          // 轉換為前端格式
+          const emotions: EmotionEntry[] = data.records.map((record: any) => ({
+            id: record.record_id.toString(),
+            date: record.recorded_at,
+            emotion: record.emotion_state,
+            intensity: record.intensity || 5,
+            note: record.trigger_message?.substring(0, 100) || '',
+            tags: [record.emotion_state]
+          }))
+          setEmotionHistory(emotions)
+        }
+      } catch (error) {
+        console.error("載入情緒歷史失敗:", error)
       }
     }
+
+    loadEmotionHistory()
     
     const savedMessages = localStorage.getItem("chatMessages")
     if (savedMessages) {
@@ -344,7 +364,6 @@ export default function PsychologicalConsultation() {
           
           const updatedHistory = [...emotionHistory, newEmotionEntry]
           setEmotionHistory(updatedHistory)
-          localStorage.setItem("emotionHistory", JSON.stringify(updatedHistory))
           
           // 儲存到 emotion_records 資料庫
           const userId = getuserid()
@@ -421,6 +440,14 @@ export default function PsychologicalConsultation() {
     setAssessmentAnswers(prev => ({ ...prev, [questionId]: value }))
   }
   
+  // 關閉評估結果彈窗
+  const handleCloseResultDialog = () => {
+    setShowResultDialog(false)
+    setAssessmentAnswers({}) // 清空答案
+    setAssessmentScore(null) // 清空結果
+    setActiveTab("tracking") // 跳轉到情緒追蹤 Tab
+  }
+  
   // Calculate assessment
   const calculateAssessment = async () => {
     // 計算總分 - 所有選項都是左差右好,不需反轉
@@ -443,7 +470,7 @@ export default function PsychologicalConsultation() {
 
     setAssessmentScore(result)
     localStorage.setItem("assessmentScore", percentage.toString())
-    toast.success("評估完成!")
+    setShowResultDialog(true) // 顯示彈窗
     
     // 儲存到資料庫
     const userid = getuserid()
@@ -747,16 +774,36 @@ export default function PsychologicalConsultation() {
               >
                 完成評估
               </Button>
-
-              {assessmentScore && (
-                <div className="p-4 bg-teal-50 rounded-lg">
-                  <h3 className="font-medium mb-2">評估結果</h3>
-                  <p className="text-lg">{assessmentScore}</p>
-                </div>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* 評估結果彈窗 */}
+        <Dialog open={showResultDialog} onOpenChange={setShowResultDialog}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-2xl text-teal-600">評估結果</DialogTitle>
+              <DialogDescription>
+                根據您的回答，我們為您分析了目前的心理健康狀態
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-6">
+              <div className="p-6 bg-teal-50 rounded-lg text-center">
+                <p className="text-xl font-semibold text-gray-800 mb-2">
+                  {assessmentScore}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                className="bg-teal-600 hover:bg-teal-700"
+                onClick={handleCloseResultDialog}
+              >
+                完成
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Tab 4: Journal */}
         <TabsContent value="journal">
