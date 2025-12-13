@@ -17,7 +17,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Send, Info, AlertTriangle, Save, Trash2, FolderOpen, CheckCircle2, Plus } from "lucide-react"
+import { 
+  Send, 
+  Info, 
+  AlertTriangle, 
+  Save, 
+  Trash2, 
+  FolderOpen, 
+  CheckCircle2, 
+  Plus, 
+  AlertCircle // [修正] 引入 AlertCircle
+} from "lucide-react" 
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
@@ -328,7 +338,7 @@ export function MedicalConsultation() {
         <CardTitle className="text-xl text-teal-600">醫病諮詢語言模型</CardTitle>
         <div className="flex items-center mt-2 text-sm text-gray-500">
           <Info size={16} className="mr-2" />
-          <span>此系統提供的建議僅供參考，不能替代專業醫療診斷</span>
+          <span>此系統提供的建議僅供參考，不能替代專業醫療診斷。</span>
         </div>
       </CardHeader>
 
@@ -480,102 +490,126 @@ export function MedicalConsultation() {
         </TabsContent>
 
         <TabsContent value="history">
-          <div className="space-y-4">
-            {history.length === 0 ? (
-              <div className="text-center p-8 text-gray-500">
-                <p>尚無諮詢歷史記錄</p>
-              </div>
-            ) : (
-              history.map((record) => (
-                <div key={record.id} className="border rounded-md p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1">
-                      <h3 className="font-medium">
-                        {record.date
-                          .toLocaleString("zh-TW", {
-                            year: "numeric",
-                            month: "2-digit",
-                            day: "2-digit",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          })
-                          .replace(/\//g, "/")
-                          .replace(",", "")}{" "}
-                        諮詢記錄
-                      </h3>
-                      <div className="flex gap-1 mt-1">
-                        {record.keywords.map((keyword, i) => (
-                          <Badge key={i}>{keyword}</Badge>
-                        ))}
+          {/* ⭐ [修正] 增加登入檢查與按鈕 */}
+          {userId === null ? (
+            <div className="p-8 text-center max-w-3xl mx-auto border rounded-md bg-gray-50">
+                <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">請先登入</h3>
+                <p className="text-gray-500 mt-2">諮詢歷史為個人化功能，登入後即可查看您的資料。</p>
+                <Button className="mt-4 bg-teal-600 hover:bg-teal-700" onClick={() => window.location.href = '/login'}>
+                    前往登入
+                </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {history.length === 0 ? (
+                <div className="text-center p-8 text-gray-500">
+                  <p>尚無諮詢歷史記錄</p>
+                </div>
+              ) : (
+                history.map((record) => (
+                  <div key={record.id} className="border rounded-md p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <h3 className="font-medium">
+                          {record.date
+                            .toLocaleString("zh-TW", {
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })
+                            .replace(/\//g, "/")
+                            .replace(",", "")}{" "}
+                          諮詢記錄
+                        </h3>
+                        <div className="flex gap-1 mt-1">
+                          {record.keywords.map((keyword, i) => (
+                            <Badge key={i}>{keyword}</Badge>
+                          ))}
+                        </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteClick(record.id)}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
                     </div>
+                    <p className="text-sm text-gray-600">
+                      {record.messages[0]?.content.substring(0, 50)}
+                      {record.messages[0]?.content.length > 50 ? "..." : ""}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">共 {record.messages.length} 則訊息</p>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleDeleteClick(record.id)}
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full bg-transparent"
+                      onClick={() => handleOpenHistory(record)}
                     >
-                      <Trash2 size={16} />
+                      <FolderOpen size={16} className="mr-2" />
+                      開啟
                     </Button>
                   </div>
-                  <p className="text-sm text-gray-600">
-                    {record.messages[0]?.content.substring(0, 50)}
-                    {record.messages[0]?.content.length > 50 ? "..." : ""}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">共 {record.messages.length} 則訊息</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 w-full bg-transparent"
-                    onClick={() => handleOpenHistory(record)}
-                  >
-                    <FolderOpen size={16} className="mr-2" />
-                    開啟
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="keywords">
-          <div className="space-y-4">
-            {/* 區塊 1: 顯示所有出現過的關鍵字 (從資料庫撈出來的) */}
-            <div className="border rounded-md p-4">
-              <h3 className="font-medium mb-2">您的健康關鍵字分析 (依照頻率排序)</h3>
-              {sortedKeywords.length === 0 ? (
-                <p className="text-sm text-gray-500">尚無足夠資料進行分析，請多進行幾次諮詢。</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {/* ⭐ 修改：這裡改成用 sortedKeywords 渲染 */}
-                  {sortedKeywords.map((keyword, i) => (
-                    <Badge key={i} variant="secondary" className="text-sm py-1 px-3">
-                      {keyword} 
-                      {/* 如果想顯示次數，可以改成: {keyword} ({keywordCounts[keyword]}) */}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+          {/* ⭐ [修正] 增加登入檢查與按鈕 */}
+          {userId === null ? (
+            <div className="p-8 text-center max-w-3xl mx-auto border rounded-md bg-gray-50">
+                <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">請先登入</h3>
+                <p className="text-gray-500 mt-2">關鍵字分析為個人化功能，登入後即可查看您的資料。</p>
+                <Button className="mt-4 bg-teal-600 hover:bg-teal-700" onClick={() => window.location.href = '/login'}>
+                    前往登入
+                </Button>
             </div>
+          ) : (
+            <div className="space-y-4">
+              {/* 區塊 1: 顯示所有出現過的關鍵字 (從資料庫撈出來的) */}
+              <div className="border rounded-md p-4">
+                <h3 className="font-medium mb-2">您的健康關鍵字分析 (依照頻率排序)</h3>
+                {sortedKeywords.length === 0 ? (
+                  <p className="text-sm text-gray-500">尚無足夠資料進行分析，請多進行幾次諮詢。</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {/* ⭐ 修改：這裡改成用 sortedKeywords 渲染 */}
+                    {sortedKeywords.map((keyword, i) => (
+                      <Badge key={i} variant="secondary" className="text-sm py-1 px-3">
+                        {keyword} 
+                        {/* 如果想顯示次數，可以改成: {keyword} ({keywordCounts[keyword]}) */}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            {/* 區塊 2: 這裡可以保留為「推薦關注」或是直接顯示前 5 名 */}
-            <div className="border rounded-md p-4">
-              <h3 className="font-medium mb-2">重點關注項目 (Top 5)</h3>
-              {sortedKeywords.length === 0 ? (
-                 <p className="text-sm text-gray-500">尚無資料。</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {/* ⭐ 修改：只顯示前 5 個最常出現的 */}
-                  {sortedKeywords.slice(0, 5).map((keyword, i) => (
-                    <Badge key={i} className="text-sm py-1 px-3 bg-teal-100 text-teal-800 hover:bg-teal-200">
-                      {keyword}
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              {/* 區塊 2: 這裡可以保留為「推薦關注」或是直接顯示前 5 名 */}
+              <div className="border rounded-md p-4">
+                <h3 className="font-medium mb-2">重點關注項目 (Top 5)</h3>
+                {sortedKeywords.length === 0 ? (
+                   <p className="text-sm text-gray-500">尚無資料。</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {/* ⭐ 修改：只顯示前 5 個最常出現的 */}
+                    {sortedKeywords.slice(0, 5).map((keyword, i) => (
+                      <Badge key={i} className="text-sm py-1 px-3 bg-teal-100 text-teal-800 hover:bg-teal-200">
+                        {keyword}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </TabsContent>
       </Tabs>
 

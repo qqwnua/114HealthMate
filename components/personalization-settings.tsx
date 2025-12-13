@@ -106,6 +106,19 @@ interface SystemPreferences {
   exerciseReminders: boolean;
 }
 
+// ⭐ [新增] 未登入時顯示的元件
+const LoginRequired = () => (
+    <div className="p-8 text-center max-w-sm mx-auto border rounded-md bg-gray-50">
+        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-medium text-gray-900">請先登入</h3>
+        <p className="text-gray-500 mt-2">此功能為個人化服務，登入後即可查看及編輯您的資料。</p>
+        <Button className="mt-4 bg-teal-600 hover:bg-teal-700" onClick={() => window.location.href = '/login'}>
+            前往登入
+        </Button>
+    </div>
+);
+
+
 export function PersonalizationSettings({
   open,
   onOpenChange,
@@ -118,6 +131,15 @@ export function PersonalizationSettings({
   const [isEditingHealth, setIsEditingHealth] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+
+  // ⭐ [修正 1] 取得並儲存 userId 狀態
+  const [userId, setUserId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("userId");
+    }
+    return null;
+  });
+
 
   // 用戶資料
   const [userProfile, setUserProfile] = useState<UserProfile>({
@@ -179,16 +201,11 @@ const [healthProfile, setHealthProfile] = useState<HealthProfile>({
 // ---------------------
 // 從 API 載入資料 (完整修正版)
 useEffect(() => {
-  if (!open) return;
-
-  const userId = localStorage.getItem("userId");
-  if (!userId) {
-    console.warn("尚未登入，無法取得 userId");
-    return;
-  }
+  // ⭐ [修正 2] 改用 state 中的 userId 進行檢查
+  if (!open || !userId) return;
 
   // --- 1. 🔴 載入個人基本資料 (補回遺失的邏輯) ---
-  fetch(`/api/personal_info?userId=${userId}`)
+  fetch(`/api/personal_info?userId=${userId}`) // 使用 state 變數
   .then(res => {
     if (res.status === 404) return { email: "" }; // 處理 404，至少保留 email
     if (!res.ok) throw new Error(`Personal API Error, status: ${res.status}`);
@@ -218,7 +235,7 @@ useEffect(() => {
 
   // --- 2. 載入健康資料 (保持現有邏輯) ---
   type BackendHealthData = Record<string, any>;
-  fetch(`/api/health_info?userId=${userId}`)
+  fetch(`/api/health_info?userId=${userId}`) // 使用 state 變數
   .then(res => {
     if (res.status === 404) return {};
     if (!res.ok) throw new Error(`Health API Error, status: ${res.status}`);
@@ -241,7 +258,7 @@ useEffect(() => {
   })
   .catch(err => console.error("❌ 抓取健康資料失敗:", err));
 
-}, [open]);
+}, [open, userId]); // ⭐ [修正 3] 增加 userId 為依賴
 
   // ---------------------
   // 系統偏好應用
@@ -369,245 +386,253 @@ const handleSaveHealthProfile = async () => {
           </TabsList>
 
           <div className="overflow-y-auto h-[65vh]">
-            {/* 基本資料 */}
+            {/* 基本資料 ⭐ [修正 4] 加入登入檢查 */}
             <TabsContent value="profile" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="flex items-center gap-2">
-                      <User className="h-5 w-5" />
-                      個人基本資料
-                    </CardTitle>
-                    <Button variant="outline" size="sm" onClick={() => setIsEditingProfile(!isEditingProfile)}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      {isEditingProfile ? "取消編輯" : "編輯資料"}
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">姓名</Label>
-                      <Input id="name" value={userProfile.name} onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })} disabled={!isEditingProfile} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">電子郵件</Label>
-                      <div className="flex items-center space-x-2">
-                        <Mail className="h-4 w-4 text-gray-400" />
-                        <Input id="email" type="email" value={userProfile.email} disabled />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">電話號碼</Label>
-                      <div className="flex items-center space-x-2">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                        <Input id="phone" value={userProfile.phone} onChange={(e) => setUserProfile({ ...userProfile, phone: e.target.value })} disabled={!isEditingProfile} />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="birthDate">出生日期</Label>
-                      <div className="flex items-center space-x-2">
-                        <Calendar className="h-4 w-4 text-gray-400" />
-                        <Input id="birthDate" type="date" value={userProfile.birthDate} onChange={(e) => setUserProfile({ ...userProfile, birthDate: e.target.value })} disabled={!isEditingProfile} />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="gender">性別</Label>
-                      <Select
-                        value={userProfile.gender}
-                        onValueChange={(value) => handleProfileChange('gender', value)}
-                        disabled={!isEditingProfile}
-                      >
-                        <SelectTrigger id="gender" disabled={!isEditingProfile}>
-                          <SelectValue placeholder="請選擇性別" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="male">男性</SelectItem>
-                          <SelectItem value="female">女性</SelectItem>
-                          <SelectItem value="other">其他</SelectItem>
-                        </SelectContent>
-                      </Select>
-                  </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="address">地址</Label>
-                    <div className="flex items-center space-x-2">
-                      <MapPin className="h-4 w-4 text-gray-400" />
-                      <Input id="address" value={userProfile.address} onChange={(e) => setUserProfile({ ...userProfile, address: e.target.value })} disabled={!isEditingProfile} />
-                    </div>
-                  </div>
-
-                  <Separator />
-                  <div className="space-y-4">
-                    <h4 className="font-medium flex items-center gap-2">
-                      <AlertCircle className="h-4 w-4 text-red-500" />
-                      緊急聯絡人
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="emergencyContact">聯絡人姓名</Label>
-                        <Input id="emergencyContact" value={userProfile.emergencyContact} onChange={(e) => setUserProfile({ ...userProfile, emergencyContact: e.target.value })} disabled={!isEditingProfile} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="emergencyPhone">聯絡人電話</Label>
-                        <Input id="emergencyPhone" value={userProfile.emergencyPhone} onChange={(e) => setUserProfile({ ...userProfile, emergencyPhone: e.target.value })} disabled={!isEditingProfile} />
-                      </div>
-                    </div>
-                  </div>
-
-                  {isEditingProfile && (
-                    <div className="flex justify-end space-x-2">
-                      <Button
-                        onClick={async () => {
-                          try {
-                            const userId = localStorage.getItem("userId");
-                            if (!userId) {
-                              alert("尚未登入，無法保存個人資料");
-                              return;
-                            }
-
-                            await fetch("/api/personal_info", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ userId, ...userProfile }),
-                            });
-
-                            setIsEditingProfile(false);
-                            alert("個人資料已保存");
-                          } catch (err) {
-                            console.error(err);
-                            alert("保存失敗");
-                          }
-                        }}
-                      >
-                        <Save className="h-4 w-4 mr-2" />
-                        保存
+              {userId ? (
+                <Card>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="flex items-center gap-2">
+                        <User className="h-5 w-5" />
+                        個人基本資料
+                      </CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => setIsEditingProfile(!isEditingProfile)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        {isEditingProfile ? "取消編輯" : "編輯資料"}
                       </Button>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="name">姓名</Label>
+                        <Input id="name" value={userProfile.name} onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })} disabled={!isEditingProfile} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email">電子郵件</Label>
+                        <div className="flex items-center space-x-2">
+                          <Mail className="h-4 w-4 text-gray-400" />
+                          <Input id="email" type="email" value={userProfile.email} disabled />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="phone">電話號碼</Label>
+                        <div className="flex items-center space-x-2">
+                          <Phone className="h-4 w-4 text-gray-400" />
+                          <Input id="phone" value={userProfile.phone} onChange={(e) => setUserProfile({ ...userProfile, phone: e.target.value })} disabled={!isEditingProfile} />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="birthDate">出生日期</Label>
+                        <div className="flex items-center space-x-2">
+                          <Calendar className="h-4 w-4 text-gray-400" />
+                          <Input id="birthDate" type="date" value={userProfile.birthDate} onChange={(e) => setUserProfile({ ...userProfile, birthDate: e.target.value })} disabled={!isEditingProfile} />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="gender">性別</Label>
+                        <Select
+                          value={userProfile.gender}
+                          onValueChange={(value) => handleProfileChange('gender', value)}
+                          disabled={!isEditingProfile}
+                        >
+                          <SelectTrigger id="gender" disabled={!isEditingProfile}>
+                            <SelectValue placeholder="請選擇性別" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">男性</SelectItem>
+                            <SelectItem value="female">女性</SelectItem>
+                            <SelectItem value="other">其他</SelectItem>
+                          </SelectContent>
+                        </Select>
+                    </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="address">地址</Label>
+                      <div className="flex items-center space-x-2">
+                        <MapPin className="h-4 w-4 text-gray-400" />
+                        <Input id="address" value={userProfile.address} onChange={(e) => setUserProfile({ ...userProfile, address: e.target.value })} disabled={!isEditingProfile} />
+                      </div>
+                    </div>
+
+                    <Separator />
+                    <div className="space-y-4">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-red-500" />
+                        緊急聯絡人
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="emergencyContact">聯絡人姓名</Label>
+                          <Input id="emergencyContact" value={userProfile.emergencyContact} onChange={(e) => setUserProfile({ ...userProfile, emergencyContact: e.target.value })} disabled={!isEditingProfile} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="emergencyPhone">聯絡人電話</Label>
+                          <Input id="emergencyPhone" value={userProfile.emergencyPhone} onChange={(e) => setUserProfile({ ...userProfile, emergencyPhone: e.target.value })} disabled={!isEditingProfile} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {isEditingProfile && (
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          onClick={async () => {
+                            try {
+                              const userId = localStorage.getItem("userId");
+                              if (!userId) {
+                                alert("尚未登入，無法保存個人資料");
+                                return;
+                              }
+
+                              await fetch("/api/personal_info", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ userId, ...userProfile }),
+                              });
+
+                              setIsEditingProfile(false);
+                              alert("個人資料已保存");
+                            } catch (err) {
+                              console.error(err);
+                              alert("保存失敗");
+                            }
+                          }}
+                        >
+                          <Save className="h-4 w-4 mr-2" />
+                          保存
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : (
+                <LoginRequired />
+              )}
             </TabsContent>
 
-            {/* 健康資料 */}
+            {/* 健康資料 ⭐ [修正 5] 加入登入檢查 */}
             <TabsContent value="health" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="flex items-center gap-2">
-                      <Heart className="h-5 w-5" />
-                      健康基本資料
-                    </CardTitle>
-                    <Button variant="outline" size="sm" onClick={() => setIsEditingHealth(!isEditingHealth)}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      {isEditingHealth ? "取消編輯" : "編輯資料"}
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="height">身高 (cm)</Label>
-                      <Input id="height" type="number" value={healthProfile.height} onChange={(e) => setHealthProfile({ ...healthProfile, height: e.target.value })} disabled={!isEditingHealth} />
+              {userId ? (
+                <Card>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="flex items-center gap-2">
+                        <Heart className="h-5 w-5" />
+                        健康基本資料
+                      </CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => setIsEditingHealth(!isEditingHealth)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        {isEditingHealth ? "取消編輯" : "編輯資料"}
+                      </Button>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="weight">體重 (kg)</Label>
-                      <Input id="weight" type="number" value={healthProfile.weight} onChange={(e) => setHealthProfile({ ...healthProfile, weight: e.target.value })} disabled={!isEditingHealth} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="bloodType">血型</Label>
-                      <Select value={healthProfile.bloodType} onValueChange={(value) => setHealthProfile({ ...healthProfile, bloodType: value })} disabled={!isEditingHealth}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="A+">A+</SelectItem>
-                          <SelectItem value="A-">A-</SelectItem>
-                          <SelectItem value="B+">B+</SelectItem>
-                          <SelectItem value="B-">B-</SelectItem>
-                          <SelectItem value="AB+">AB+</SelectItem>
-                          <SelectItem value="AB-">AB-</SelectItem>
-                          <SelectItem value="O+">O+</SelectItem>
-                          <SelectItem value="O-">O-</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="allergies">過敏史</Label>
-                    <Textarea id="allergies" value={healthProfile.allergies} onChange={(e) => setHealthProfile({ ...healthProfile, allergies: e.target.value })} disabled={!isEditingHealth} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="medications">目前用藥</Label>
-                    <Textarea id="medications" value={healthProfile.medications} onChange={(e) => setHealthProfile({ ...healthProfile, medications: e.target.value })} disabled={!isEditingHealth} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="medicalHistory">重要病史</Label>
-                    <Textarea id="medicalHistory" value={healthProfile.medicalHistory} onChange={(e) => setHealthProfile({ ...healthProfile, medicalHistory: e.target.value })} disabled={!isEditingHealth} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="familyHistory">家族病史</Label>
-                    <Textarea id="familyHistory" value={healthProfile.familyHistory} onChange={(e) => setHealthProfile({ ...healthProfile, familyHistory: e.target.value })} disabled={!isEditingHealth} />
-                  </div>
-
-                  <Separator />
-                  <div className="space-y-4">
-                    <h4 className="font-medium">生活習慣</h4>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
-                        <Label>吸煙狀況</Label>
-                        <Select value={healthProfile.smokingStatus} onValueChange={(value) => setHealthProfile({ ...healthProfile, smokingStatus: value })} disabled={!isEditingHealth}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="never">從不吸煙</SelectItem>
-                            <SelectItem value="former">已戒煙</SelectItem>
-                            <SelectItem value="current">目前吸煙</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Label htmlFor="height">身高 (cm)</Label>
+                        <Input id="height" type="number" value={healthProfile.height} onChange={(e) => setHealthProfile({ ...healthProfile, height: e.target.value })} disabled={!isEditingHealth} />
                       </div>
                       <div className="space-y-2">
-                        <Label>飲酒習慣</Label>
-                        <Select value={healthProfile.alcoholConsumption} onValueChange={(value) => setHealthProfile({ ...healthProfile, alcoholConsumption: value })} disabled={!isEditingHealth}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="never">從不飲酒</SelectItem>
-                            <SelectItem value="occasional">偶爾飲酒</SelectItem>
-                            <SelectItem value="regular">規律飲酒</SelectItem>
-                            <SelectItem value="heavy">大量飲酒</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Label htmlFor="weight">體重 (kg)</Label>
+                        <Input id="weight" type="number" value={healthProfile.weight} onChange={(e) => setHealthProfile({ ...healthProfile, weight: e.target.value })} disabled={!isEditingHealth} />
                       </div>
                       <div className="space-y-2">
-                        <Label>運動頻率</Label>
-                        <Select value={healthProfile.exerciseFrequency} onValueChange={(value) => setHealthProfile({ ...healthProfile, exerciseFrequency: value })} disabled={!isEditingHealth}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
+                        <Label htmlFor="bloodType">血型</Label>
+                        <Select value={healthProfile.bloodType} onValueChange={(value) => setHealthProfile({ ...healthProfile, bloodType: value })} disabled={!isEditingHealth}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="never">從不運動</SelectItem>
-                            <SelectItem value="1-2times">每週1-2次</SelectItem>
-                            <SelectItem value="3-4times">每週3-4次</SelectItem>
-                            <SelectItem value="daily">每天運動</SelectItem>
+                            <SelectItem value="A+">A+</SelectItem>
+                            <SelectItem value="A-">A-</SelectItem>
+                            <SelectItem value="B+">B+</SelectItem>
+                            <SelectItem value="B-">B-</SelectItem>
+                            <SelectItem value="AB+">AB+</SelectItem>
+                            <SelectItem value="AB-">AB-</SelectItem>
+                            <SelectItem value="O+">O+</SelectItem>
+                            <SelectItem value="O-">O-</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                     </div>
-                  </div>
 
-                  {isEditingHealth && (
-                    <div className="flex justify-end space-x-2">
-                      <Button onClick={handleSaveHealthProfile}><Save className="h-4 w-4 mr-2" />保存健康資料</Button>
+                    <div className="space-y-2">
+                      <Label htmlFor="allergies">過敏史</Label>
+                      <Textarea id="allergies" value={healthProfile.allergies} onChange={(e) => setHealthProfile({ ...healthProfile, allergies: e.target.value })} disabled={!isEditingHealth} />
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="medications">目前用藥</Label>
+                      <Textarea id="medications" value={healthProfile.medications} onChange={(e) => setHealthProfile({ ...healthProfile, medications: e.target.value })} disabled={!isEditingHealth} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="medicalHistory">重要病史</Label>
+                      <Textarea id="medicalHistory" value={healthProfile.medicalHistory} onChange={(e) => setHealthProfile({ ...healthProfile, medicalHistory: e.target.value })} disabled={!isEditingHealth} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="familyHistory">家族病史</Label>
+                      <Textarea id="familyHistory" value={healthProfile.familyHistory} onChange={(e) => setHealthProfile({ ...healthProfile, familyHistory: e.target.value })} disabled={!isEditingHealth} />
+                    </div>
+
+                    <Separator />
+                    <div className="space-y-4">
+                      <h4 className="font-medium">生活習慣</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label>吸煙狀況</Label>
+                          <Select value={healthProfile.smokingStatus} onValueChange={(value) => setHealthProfile({ ...healthProfile, smokingStatus: value })} disabled={!isEditingHealth}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="never">從不吸煙</SelectItem>
+                              <SelectItem value="former">已戒煙</SelectItem>
+                              <SelectItem value="current">目前吸煙</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>飲酒習慣</Label>
+                          <Select value={healthProfile.alcoholConsumption} onValueChange={(value) => setHealthProfile({ ...healthProfile, alcoholConsumption: value })} disabled={!isEditingHealth}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="never">從不飲酒</SelectItem>
+                              <SelectItem value="occasional">偶爾飲酒</SelectItem>
+                              <SelectItem value="regular">規律飲酒</SelectItem>
+                              <SelectItem value="heavy">大量飲酒</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>運動頻率</Label>
+                          <Select value={healthProfile.exerciseFrequency} onValueChange={(value) => setHealthProfile({ ...healthProfile, exerciseFrequency: value })} disabled={!isEditingHealth}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="never">從不運動</SelectItem>
+                              <SelectItem value="1-2times">每週1-2次</SelectItem>
+                              <SelectItem value="3-4times">每週3-4次</SelectItem>
+                              <SelectItem value="daily">每天運動</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {isEditingHealth && (
+                      <div className="flex justify-end space-x-2">
+                        <Button onClick={handleSaveHealthProfile}><Save className="h-4 w-4 mr-2" />保存健康資料</Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : (
+                <LoginRequired />
+              )}
             </TabsContent>
 
-            {/* 系統偏好 */}
+            {/* 系統偏好 (保持不需要登入) */}
             <TabsContent value="preferences" className="space-y-6">
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><Accessibility className="h-5 w-5" /> 無障礙設定</CardTitle></CardHeader>
@@ -657,58 +682,62 @@ const handleSaveHealthProfile = async () => {
               
             </TabsContent>
 
-            {/* 安全設定 */}
+            {/* 安全設定 ⭐ [修正 6] 加入登入檢查 */}
             <TabsContent value="security" className="space-y-6">
-              <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> 安全設定</CardTitle></CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium">密碼</h4>
-                        <p className="text-sm text-gray-500">上次變更：2023年3月15日</p>
+              {userId ? (
+                <Card>
+                  <CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> 安全設定</CardTitle></CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h4 className="font-medium">密碼</h4>
+                          <p className="text-sm text-gray-500">上次變更：2023年3月15日</p>
+                        </div>
+                        <Button variant="outline" onClick={() => setShowPasswordChange(!showPasswordChange)}>
+                          <Lock className="h-4 w-4 mr-2" />
+                          變更密碼
+                        </Button>
                       </div>
-                      <Button variant="outline" onClick={() => setShowPasswordChange(!showPasswordChange)}>
-                        <Lock className="h-4 w-4 mr-2" />
-                        變更密碼
-                      </Button>
+
+                      {showPasswordChange && (
+                        <div className="space-y-4 p-4 border rounded-md bg-gray-50">
+                          <div className="space-y-2">
+                            <Label htmlFor="currentPassword">目前密碼</Label>
+                            <Input id="currentPassword" type="password" value={passwordData.currentPassword} onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="newPassword">新密碼</Label>
+                            <Input id="newPassword" type="password" value={passwordData.newPassword} onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="confirmPassword">確認新密碼</Label>
+                            <Input id="confirmPassword" type="password" value={passwordData.confirmPassword} onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })} />
+                          </div>
+                          <div className="flex justify-end space-x-2">
+                            <Button variant="outline" onClick={() => setShowPasswordChange(false)}>取消</Button>
+                            <Button onClick={handleChangePassword}><CheckCircle2 className="h-4 w-4 mr-2" /> 確認變更</Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {showPasswordChange && (
-                      <div className="space-y-4 p-4 border rounded-md bg-gray-50">
-                        <div className="space-y-2">
-                          <Label htmlFor="currentPassword">目前密碼</Label>
-                          <Input id="currentPassword" type="password" value={passwordData.currentPassword} onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="newPassword">新密碼</Label>
-                          <Input id="newPassword" type="password" value={passwordData.newPassword} onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })} />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="confirmPassword">確認新密碼</Label>
-                          <Input id="confirmPassword" type="password" value={passwordData.confirmPassword} onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })} />
-                        </div>
-                        <div className="flex justify-end space-x-2">
-                          <Button variant="outline" onClick={() => setShowPasswordChange(false)}>取消</Button>
-                          <Button onClick={handleChangePassword}><CheckCircle2 className="h-4 w-4 mr-2" /> 確認變更</Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    <Separator />
 
-                  <Separator />
-
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <h4 className="font-medium">登出帳號</h4>
-                        <p className="text-sm text-gray-500">登出並清除本地資料</p>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <h4 className="font-medium">登出帳號</h4>
+                          <p className="text-sm text-gray-500">登出並清除本地資料</p>
+                        </div>
+                        <Button variant="destructive" onClick={handleLogout}><LogOut className="h-4 w-4 mr-2" /> 登出</Button>
                       </div>
-                      <Button variant="destructive" onClick={handleLogout}><LogOut className="h-4 w-4 mr-2" /> 登出</Button>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              ) : (
+                <LoginRequired />
+              )}
             </TabsContent>
           </div>
         </Tabs>

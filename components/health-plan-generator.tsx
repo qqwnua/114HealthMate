@@ -19,10 +19,10 @@ import {
   Calendar,
   Save,
   Loader2,
+  AlertCircle,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-// 如果您的環境沒有安裝 ai/react，這一行可能會報錯。如果報錯，請暫時註解掉並移除下方的 useChat 相關程式碼
-//import { useChat } from "ai/react"
+
 import { toast } from "@/hooks/use-toast"
 
 // --- TypeScript 類型定義 ---
@@ -104,6 +104,8 @@ export function HealthPlanGenerator() {
   const [isSaving, setIsSaving] = useState(false); // [新增] 儲存至 DB 中
   const [isSaveSuccessful, setIsSaveSuccessful] = useState(false); // 儲存按鈕的 "已儲存" 狀態
 
+  const [userId, setUserId] = useState<string | null>(null);
+
   const [generatedPlan, setGeneratedPlan] = useState<LLMResponse>({
     plan: [],
     schedule: [],
@@ -124,34 +126,32 @@ export function HealthPlanGenerator() {
   // --- useEffect 抓取資料 ---
   useEffect(() => {
     const fetchData = async () => {
-      const userId = localStorage.getItem("userId");
-      if (!userId) {
+      // 1. [修改] 先抓取並設定 userId
+      const id = localStorage.getItem("userId");
+      setUserId(id);
+      
+      if (!id) {
         console.warn("No userId found, cannot fetch data.");
         setIsDataLoading(false);
-        // 如果沒有登入，可以選擇導向或僅提示
-        // toast({
-        //   title: "提示",
-        //   description: "您目前為訪客模式，無法自動帶入健康數據。",
-        // });
-        return;
+        return; // 未登入則跳過後續資料抓取
       }
 
       setIsDataLoading(true);
       try {
-        // 1. 抓取個人資料
-        const personalRes = await fetch(`/api/personal_info?userId=${userId}`);
+        // 2. 抓取個人資料
+        const personalRes = await fetch(`/api/personal_info?userId=${id}`);
         // 如果 API 不存在或失敗，我們僅記錄錯誤但不中斷 UI 渲染
         const personalData = personalRes.ok ? await personalRes.json() : {};
         setPersonalInfo(personalData);
 
-        // 2. 抓取健康資料
-        const healthRes = await fetch(`/api/health_info?userId=${userId}`);
+        // 3. 抓取健康資料
+        const healthRes = await fetch(`/api/health_info?userId=${id}`);
         const healthData = healthRes.ok ? await healthRes.json() : {};
         setHealthInfo(healthData);
 
       } catch (error) {
         console.error("Failed to fetch user data:", error);
-        // 即使失敗也讓 loading 結束，讓使用者可以手動輸入目標
+        // 即使失敗也讓 loading 結束
       } finally {
         setIsDataLoading(false);
       }
@@ -159,6 +159,24 @@ export function HealthPlanGenerator() {
 
     fetchData();
   }, []);
+
+  
+  // --- [新增] 未登入狀態檢查 (提早回傳) ---
+  if (userId === null && !isDataLoading) {
+    return (
+      <div className="p-8 text-center max-w-3xl mx-auto border rounded-lg shadow-lg bg-white mt-8">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h3 className="text-xl font-bold text-gray-900">請先登入</h3>
+        <p className="text-gray-500 mt-2">
+          此功能需要您的個人健康數據(病史、體重等)才能生成專屬計畫。<br/>
+          請登入以確保計畫的準確性與個人化。
+        </p>
+        <Button className="mt-6 bg-teal-600 hover:bg-teal-700" onClick={() => window.location.href = '/login'}>
+          前往登入
+        </Button>
+      </div>
+    );
+  }
 
   
   // --- 儲存排程 (寫入 PostgreSQL) ---

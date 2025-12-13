@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
-import { Loader2, Zap, Info, ShieldCheck, Activity } from "lucide-react"
+import { Loader2, Zap, Info, ShieldCheck, Activity, AlertCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/hooks/use-toast"
 
@@ -61,7 +61,10 @@ export function HealthManagement() {
   const [historyData, setHistoryData] = useState<HealthRecord[]>([])
   const [latestAnalysis, setLatestAnalysis] = useState<AIAnalysisResult>(defaultAnalysis)
   const [openDialog, setOpenDialog] = useState<string | null>(null)
-  const [personalInfo, setPersonalInfo] = useState<any>({}) 
+  const [personalInfo, setPersonalInfo] = useState<any>({})
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -76,16 +79,24 @@ export function HealthManagement() {
   }, []);
 
   const fetchDataAndAnalyze = async () => {
-    const userId = localStorage.getItem("userId");
-    if (!userId) {
+    // [修改] 處理載入狀態和 userId
+    setIsDataLoading(true);
+
+    const id = localStorage.getItem("userId");
+    setUserId(id); // 設定 userId 狀態
+
+    if (!id) {
       setHistoryData([]); 
+      setLatestAnalysis(defaultAnalysis); // 未登入時顯示預設分析
+      setIsDataLoading(false); // 未登入，結束載入
       return;
     }
 
     try {
+      // 使用 id 來抓取資料
       const [personalRes, recordsRes] = await Promise.all([
-        fetch(`/api/personal_info?userId=${userId}`),
-        fetch(`/api/health_records?userId=${userId}&limit=30`)
+        fetch(`/api/personal_info?userId=${id}`),
+        fetch(`/api/health_records?userId=${id}&limit=30`)
       ]);
 
       // 先將資料解析出來
@@ -111,10 +122,16 @@ export function HealthManagement() {
           triggerAIAnalysis(records, profile);
         } else {
           setHistoryData([]);
+          setLatestAnalysis(defaultAnalysis); // 無數據時顯示預設分析
         }
+      } else {
+        setHistoryData([]); // 即使 API 失敗，也確保數據清空
+        setLatestAnalysis(defaultAnalysis);
       }
     } catch (error) {
       console.error("Fetch error:", error);
+    } finally {
+      setIsDataLoading(false); // 結束載入
     }
   };
 
@@ -161,7 +178,12 @@ export function HealthManagement() {
   };
 
   const handleSaveData = async (type: string, data: any) => {
-    const userId = localStorage.getItem("userId");
+    // [修改] 直接使用 state 中的 userId
+    if (!userId) {
+        toast({ title: "儲存失敗", description: "無法獲取使用者 ID，請先登入。", variant: "destructive" });
+        return;
+    }
+
     const { date, ...healthData } = data;
     
     // 1. 初始化最終的 Payload
@@ -238,6 +260,22 @@ export function HealthManagement() {
     }
     return "--";
   };
+
+  if (userId === null && !isDataLoading) {
+    return (
+      <div className="p-8 text-center max-w-3xl mx-auto border rounded-lg shadow-lg bg-white mt-8">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <h3 className="text-xl font-bold text-gray-900">請先登入</h3>
+        <p className="text-gray-500 mt-2">
+          此功能需要您的健康記錄與個人數據才能提供個人化儀表板與 AI 風險評估。<br/>
+          請登入以開始記錄您的健康數據。
+        </p>
+        <Button className="mt-6 bg-teal-600 hover:bg-teal-700" onClick={() => window.location.href = '/login'}>
+          前往登入
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
