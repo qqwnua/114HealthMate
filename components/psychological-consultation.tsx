@@ -31,7 +31,7 @@ type EmotionEntry = {
 // 🔧 輔助函數:取得 userid  
 function getuserid(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('userid');
+  return localStorage.getItem('userId');
 }
 
 // Assessment questions
@@ -306,16 +306,18 @@ export default function PsychologicalConsultation() {
         timestamp: new Date(),
       }
       
-      
       setMessages(prev => [...prev, assistantMessage])
       
-      // 儲存到資料庫
-      const userId = getuserid()
+      // 關鍵修正：直接抓取 'userId' (大寫 I)，避免 getuserid() 舊函式抓到 null
+      const userId = localStorage.getItem('userId'); 
+
+      // 1. 儲存對話記錄 (Chat History)
       if (userId) {
         const sessionId = localStorage.getItem('currentSessionId') || `session_${Date.now()}`
         localStorage.setItem('currentSessionId', sessionId)
 
         try {
+          // 存用戶訊息
           await fetch('/api/chat-history', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -327,6 +329,7 @@ export default function PsychologicalConsultation() {
             })
           })
 
+          // 存 AI 訊息
           await fetch('/api/chat-history', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -344,7 +347,7 @@ export default function PsychologicalConsultation() {
         }
       }
       
-      // 分析情緒並儲存到歷史記錄
+      // 2. 分析情緒並儲存到歷史記錄 (Emotion Records & Health Score)
       if (data.debug?.bert_analysis) {
         const analysis = data.debug.bert_analysis
         const emotionState = analysis.emotion_state || "中性"
@@ -353,6 +356,8 @@ export default function PsychologicalConsultation() {
         // 只有當訊息包含情緒內容時才列入追蹤
         if (analysis.should_track !== false) {
           const intensity = Math.min(Math.round(analysis.risk_score * 10), 10)
+          
+          // 更新前端畫面
           const newEmotionEntry: EmotionEntry = {
             id: Date.now().toString(),
             date: new Date().toISOString(),
@@ -366,11 +371,10 @@ export default function PsychologicalConsultation() {
           setEmotionHistory(updatedHistory)
           
           // 儲存到 emotion_records 資料庫
-          const userId = getuserid()
           if (userId) {
             try {
               // 計算 mood_score: 50%近期 + 35%歷史 + 15%自我評估
-              let moodScore = null
+              let moodScore = 60; // 給個預設值避免 null
               
               // 1. 近期情緒平均 (最近5筆)
               const recentEmotions = emotionHistory.slice(-5)
@@ -383,7 +387,7 @@ export default function PsychologicalConsultation() {
                 ? emotionHistory.reduce((sum, e) => sum + (10 - e.intensity), 0) / emotionHistory.length
                 : 5
               
-              // 3. 自我評估分數 (從 localStorage 讀取最近一次)
+              // 3. 自我評估分數
               const lastAssessmentScore = parseFloat(localStorage.getItem("assessmentScore") || "50")
               
               // 加權計算
@@ -391,6 +395,8 @@ export default function PsychologicalConsultation() {
                 (recentAvg * 0.5 + historyAvg * 0.35 + (lastAssessmentScore / 10) * 0.15) * 10
               )
               
+              // A. 寫入情緒紀錄
+              console.log("正在儲存情緒紀錄...");
               await fetch('/api/emotion-records', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -404,6 +410,20 @@ export default function PsychologicalConsultation() {
                   trigger_message: userMessage.content
                 })
               })
+
+              // B. 觸發健康分數更新 (這就是你要解決的第二個問題)
+              console.log("正在更新健康分數...");
+              try {
+                await fetch('/api/health-score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userid: parseInt(userId) })
+                });
+                console.log("✅ 健康分數已更新");
+              } catch (e) {
+                console.error("更新分數失敗", e);
+              }
+
             } catch (error) {
               console.error("儲存情緒記錄失敗:", error)
             }
