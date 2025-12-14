@@ -1,7 +1,7 @@
 // app/api/latest-health-metric/route.ts
 
 import { NextResponse } from "next/server";
-import { pool } from "@/lib/db"; // 依照您的專案結構引用連線池
+import { pool } from "@/lib/db";
 
 export async function GET(req: Request) {
   try {
@@ -12,25 +12,36 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "缺少 userId" }, { status: 400 });
     }
 
-    // SQL 查詢邏輯：
-    // 1. 從 health_records 表格
-    // 2. 篩選該 user_id
-    // 3. 依照 record_date (日期) 降序排列，若日期相同則依照 id 降序 (確保抓到最新寫入的)
-    // 4. LIMIT 1 只取一筆
+    // 🟢 修改後的 SQL：使用 Subquery 分別找最新的非空值
+    // 這樣就算你今天只量體重，昨天量血壓，這裡也會顯示昨天的血壓，不會變成 N/A
     const query = `
       SELECT 
-        systolic_bp, 
-        diastolic_bp, 
-        blood_sugar
-      FROM health_records
-      WHERE user_id = $1
-      ORDER BY record_date DESC, id DESC
-      LIMIT 1
+        (
+          SELECT systolic_bp 
+          FROM health_records 
+          WHERE user_id = $1 AND systolic_bp IS NOT NULL 
+          ORDER BY record_date DESC, id DESC 
+          LIMIT 1
+        ) as systolic_bp,
+        (
+          SELECT diastolic_bp 
+          FROM health_records 
+          WHERE user_id = $1 AND diastolic_bp IS NOT NULL 
+          ORDER BY record_date DESC, id DESC 
+          LIMIT 1
+        ) as diastolic_bp,
+        (
+          SELECT blood_sugar 
+          FROM health_records 
+          WHERE user_id = $1 AND blood_sugar IS NOT NULL 
+          ORDER BY record_date DESC, id DESC 
+          LIMIT 1
+        ) as blood_sugar
     `;
 
     const result = await pool.query(query, [userId]);
 
-    // 如果沒有紀錄，回傳 null 值以免前端報錯
+    // 如果完全沒有資料
     if ((result.rowCount ?? 0) === 0) {
       return NextResponse.json({ 
         systolic_bp: null, 
@@ -39,7 +50,7 @@ export async function GET(req: Request) {
       });
     }
 
-    // 回傳最新的一筆數據
+    // 回傳結果
     return NextResponse.json(result.rows[0]);
 
   } catch (error: any) {
