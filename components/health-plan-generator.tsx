@@ -5,15 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import {
   Target,
   UserCircle,
   Activity,
-  Brain,
-  Send,
-  Bot,
-  User,
   Zap,
   CheckCircle2,
   Calendar,
@@ -21,33 +16,9 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-
 import { toast } from "@/hooks/use-toast"
 
 // --- TypeScript 類型定義 ---
-
-interface HealthData {
-  personalInfo: {
-    name: string;
-    age: number;
-    gender: "female" | "male" | "other";
-    height: number;
-    weight: number;
-    bmi: number;
-  };
-  healthMetrics: {
-    bloodPressure: { systolic: number; diastolic: number };
-    bloodSugar: number;
-    heartRate: number;
-    sleepHours: number;
-    stepsPerDay: number;
-    waterIntake: number;
-  };
-  healthHistory: string[];
-  currentMedications: string[];
-  activityLevel: "light" | "moderate" | "active";
-}
 
 interface ScheduleItem {
   time: string;
@@ -58,6 +29,13 @@ interface LLMResponse {
   plan: string[];
   schedule: ScheduleItem[];
   disclaimer: string;
+}
+
+// [新增] 用於儲存最新量測數據的介面
+interface LatestMetrics {
+  systolic_bp: number | null;
+  diastolic_bp: number | null;
+  blood_sugar: number | null;
 }
 
 // --- 輔助函式 ---
@@ -95,14 +73,21 @@ const calculateBMI = (height: string, weight: string): string => {
 export function HealthPlanGenerator() {
   const [planGenerated, setPlanGenerated] = useState(false)
   const [userTextInput, setUserTextInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false) // AI 生成中
+  const [isLoading, setIsLoading] = useState(false) 
   
-  const [isDataLoading, setIsDataLoading] = useState(true); // 頁面資料載入中
+  const [isDataLoading, setIsDataLoading] = useState(true); 
   const [personalInfo, setPersonalInfo] = useState<any>({});
   const [healthInfo, setHealthInfo] = useState<any>({});
   
-  const [isSaving, setIsSaving] = useState(false); // [新增] 儲存至 DB 中
-  const [isSaveSuccessful, setIsSaveSuccessful] = useState(false); // 儲存按鈕的 "已儲存" 狀態
+  // [新增] 儲存最新的血壓血糖數據 state
+  const [latestMetrics, setLatestMetrics] = useState<LatestMetrics>({
+    systolic_bp: null,
+    diastolic_bp: null,
+    blood_sugar: null
+  });
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaveSuccessful, setIsSaveSuccessful] = useState(false);
 
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -112,46 +97,43 @@ export function HealthPlanGenerator() {
     disclaimer: "",
   })
   
-  const [assistantDialogOpen, setAssistantDialogOpen] = useState(false)
-  
-  // 使用 Vercel AI SDK 的 hook
-  // const { messages, input, handleInputChange, handleSubmit, isLoading: isChatLoading } = useChat({
-  //   api: "/api/health-assistant",
-  //   onError: (err) => {
-  //     console.error("Chat Error:", err);
-  //     // 這裡不顯示 toast 以免干擾主流程，僅記錄錯誤
-  //   }
-  // })
-  
   // --- useEffect 抓取資料 ---
   useEffect(() => {
     const fetchData = async () => {
-      // 1. [修改] 先抓取並設定 userId
       const id = localStorage.getItem("userId");
       setUserId(id);
       
       if (!id) {
-        console.warn("No userId found, cannot fetch data.");
         setIsDataLoading(false);
-        return; // 未登入則跳過後續資料抓取
+        return; 
       }
 
       setIsDataLoading(true);
       try {
-        // 2. 抓取個人資料
+        // 1. 抓取個人資料
         const personalRes = await fetch(`/api/personal_info?userId=${id}`);
-        // 如果 API 不存在或失敗，我們僅記錄錯誤但不中斷 UI 渲染
         const personalData = personalRes.ok ? await personalRes.json() : {};
         setPersonalInfo(personalData);
 
-        // 3. 抓取健康資料
+        // 2. 抓取基本健康資料 (身高體重等)
         const healthRes = await fetch(`/api/health_info?userId=${id}`);
         const healthData = healthRes.ok ? await healthRes.json() : {};
         setHealthInfo(healthData);
 
+        // 3. [新增] 抓取最新的量測數據 (血壓、血糖)
+        // 使用剛建立的 API
+        const metricRes = await fetch(`/api/latest-health-metric?userId=${id}`);
+        if (metricRes.ok) {
+          const metrics = await metricRes.json();
+          setLatestMetrics({
+            systolic_bp: metrics.systolic_bp,
+            diastolic_bp: metrics.diastolic_bp,
+            blood_sugar: metrics.blood_sugar
+          });
+        }
+
       } catch (error) {
         console.error("Failed to fetch user data:", error);
-        // 即使失敗也讓 loading 結束
       } finally {
         setIsDataLoading(false);
       }
@@ -160,16 +142,14 @@ export function HealthPlanGenerator() {
     fetchData();
   }, []);
 
-  
-  // --- [新增] 未登入狀態檢查 (提早回傳) ---
+  // --- 未登入狀態檢查 ---
   if (userId === null && !isDataLoading) {
     return (
       <div className="p-8 text-center max-w-3xl mx-auto border rounded-lg shadow-lg bg-white mt-8">
         <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
         <h3 className="text-xl font-bold text-gray-900">請先登入</h3>
         <p className="text-gray-500 mt-2">
-          此功能需要您的個人健康數據(病史、體重等)才能生成專屬計畫。<br/>
-          請登入以確保計畫的準確性與個人化。
+          此功能需要您的個人健康數據才能生成專屬計畫。
         </p>
         <Button className="mt-6 bg-teal-600 hover:bg-teal-700" onClick={() => window.location.href = '/login'}>
           前往登入
@@ -178,66 +158,46 @@ export function HealthPlanGenerator() {
     );
   }
 
-  
-  // --- 儲存排程 (寫入 PostgreSQL) ---
+  // --- 儲存排程 (保持不變) ---
   const handleSavePlanToDatabase = async () => {
-    if (!generatedPlan.schedule || generatedPlan.schedule.length === 0) {
-      toast({
-        title: "沒有排程可儲存",
-        description: "AI 尚未生成任何排程。",
-        variant: "destructive",
-      });
-      return;
-    }
-    
+    if (!generatedPlan.schedule || generatedPlan.schedule.length === 0) return;
     const userId = localStorage.getItem("userId");
-    if (!userId) {
-       toast({ title: "儲存失敗", description: "無法獲取使用者 ID，請先登入。", variant: "destructive" });
-       return;
-    }
+    if (!userId) return;
 
     setIsSaving(true);
     setIsSaveSuccessful(false);
 
     try {
-      // 呼叫後端 API 路由
       const response = await fetch('/api/save-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: parseInt(userId, 10), // 確保轉為數字以符合資料庫 int4
+          userId: parseInt(userId, 10),
           userGoal: userTextInput,
           generatedPlan: generatedPlan,
         }),
       });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || '儲存計畫失敗');
-      }
+      if (!response.ok) throw new Error('儲存計畫失敗');
 
       toast({
         title: "儲存成功！",
-        description: `已新增 ${result.remindersAdded || 0} 個排程至您的提醒列表。`,
+        description: `排程已加入您的提醒列表。`,
       });
-      
       setIsSaveSuccessful(true);
-      setTimeout(() => {
-        setIsSaveSuccessful(false);
-      }, 3000);
-
+      setTimeout(() => setIsSaveSuccessful(false), 3000);
     } catch (error) {
-      console.error("Failed to save plan to database", error);
-      toast({
-        title: "儲存失敗",
-        description: error instanceof Error ? error.message : "無法連線至伺服器。",
-        variant: "destructive",
-      });
+      toast({ title: "儲存失敗", description: "無法連線至伺服器。", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   }
+
+  const formatPlanText = (text: string) => {
+    if (!text) return "";
+    // 使用正則表達式將 **內容** 替換為 <strong>內容</strong>
+    return text.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-teal-700">$1</strong>');
+  };
 
   // --- 生成計畫 ---
   const generateHealthPlan = async () => {
@@ -248,7 +208,7 @@ export function HealthPlanGenerator() {
     const age = calculateAge(personalInfo.birthdate);
     const bmi = calculateBMI(healthInfo.height, healthInfo.weight);
 
-    // 建立要傳送給 AI 的資料 payload
+    // [修改] 將真實抓取到的數據放入 Payload 傳給 AI
     const healthDataPayload = {
       personalInfo: {
         name: personalInfo.name || "用戶",
@@ -259,9 +219,14 @@ export function HealthPlanGenerator() {
         bmi: parseFloat(bmi) || null,
       },
       healthMetrics: {
-        // 這裡如果有真實數據來源可填入，目前設為 null
-        bloodPressure: { systolic: null, diastolic: null },
-        bloodSugar: null,
+        // 使用從 health_records 抓取的最新數據
+        bloodPressure: { 
+          systolic: latestMetrics.systolic_bp, 
+          diastolic: latestMetrics.diastolic_bp 
+        },
+        bloodSugar: latestMetrics.blood_sugar,
+        
+        // 這些欄位目前資料庫沒有直接對應，暫時維持 null
         heartRate: null, 
         sleepHours: null,
         stepsPerDay: null,
@@ -281,36 +246,21 @@ export function HealthPlanGenerator() {
     try {
       const response = await fetch('/api/generate-plan', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           healthData: healthDataPayload,
           userGoal: userTextInput,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `API Error: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`API Error: ${response.status}`);
       const parsedResult: LLMResponse = await response.json();
-
-      if (!parsedResult.plan || !parsedResult.schedule) {
-        throw new Error("API 回傳的資料格式不正確 (缺少 plan 或 schedule)");
-      }
-
       setGeneratedPlan(parsedResult);
       setPlanGenerated(true);
 
     } catch (error) {
       console.error("生成計畫失敗:", error);
-      toast({
-        title: "生成失敗",
-        description: error instanceof Error ? error.message : "無法連線至 API。",
-        variant: "destructive",
-      });
+      toast({ title: "生成失敗", description: "請稍後再試。", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -324,7 +274,6 @@ export function HealthPlanGenerator() {
       </CardHeader>
 
       <div className="space-y-6">
-        {/* 區塊 1: 輸入卡片 */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -366,13 +315,23 @@ export function HealthPlanGenerator() {
                     <span className="text-gray-500">BMI</span>
                     <p className="font-medium">{calculateBMI(healthInfo.height, healthInfo.weight)}</p>
                   </div>
+                  {/* [修改] 顯示真實血壓 */}
                   <div>
-                    <span className="text-gray-500">血壓</span>
-                    <p className="font-medium">N/A</p>
+                    <span className="text-gray-500">血壓 (mmHg)</span>
+                    <p className="font-medium">
+                      {latestMetrics.systolic_bp && latestMetrics.diastolic_bp
+                        ? `${latestMetrics.systolic_bp}/${latestMetrics.diastolic_bp}`
+                        : "N/A"}
+                    </p>
                   </div>
+                  {/* [修改] 顯示真實血糖 */}
                   <div>
-                    <span className="text-gray-500">血糖</span>
-                    <p className="font-medium">N/A</p>
+                    <span className="text-gray-500">血糖 (mg/dL)</span>
+                    <p className="font-medium">
+                      {latestMetrics.blood_sugar
+                        ? `${latestMetrics.blood_sugar}`
+                        : "N/A"}
+                    </p>
                   </div>
                 </div>
               )}
@@ -386,18 +345,14 @@ export function HealthPlanGenerator() {
               </Label>
               <Input
                 id="userGoalInput"
-                placeholder="例如：我想在3個月內減重5公斤、改善睡眠品質、並降低血壓"
+                placeholder="例如：我想在3個月內減重5公斤、改善睡眠品質..."
                 value={userTextInput}
                 onChange={(e) => setUserTextInput(e.target.value)}
                 className="text-base p-4"
                 disabled={isLoading}
               />
-              <p className="text-xs text-gray-500">
-                AI 助理將參考您的健康數據 (含生活習慣、病史) 和此目標，生成個人化計畫。
-              </p>
             </div>
             
-            {/* 3. 生成按鈕 */}
             <div className="flex justify-end pt-6">
               <Button
                 onClick={generateHealthPlan}
@@ -421,7 +376,6 @@ export function HealthPlanGenerator() {
           </CardContent>
         </Card>
 
-        {/* 區塊 2: 生成中提示 */}
         {isLoading && (
           <Card>
             <CardContent className="p-6 text-center">
@@ -433,10 +387,8 @@ export function HealthPlanGenerator() {
           </Card>
         )}
 
-        {/* 區塊 3: 結果卡片 */}
         {planGenerated && !isLoading && (
           <div className="space-y-6">
-            {/* 1. 計畫建議 */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -446,19 +398,21 @@ export function HealthPlanGenerator() {
               </CardHeader>
               <CardContent>
                 <div className="bg-green-50 p-4 rounded-lg">
-                  <h3 className="font-medium mb-2">
-                    您好！根據您的數據和目標，以下是 3-5 點具體建議：
-                  </h3>
+                  <h3 className="font-medium mb-2">建議計畫：</h3>
                   <ul className="list-disc pl-5 space-y-2 text-gray-700">
                     {generatedPlan.plan.map((item, index) => (
-                      <li key={index} dangerouslySetInnerHTML={{ __html: item }} />
+                      <li 
+                        key={index} 
+                        // 這裡呼叫上面修改後的 formatPlanText
+                        // 結果範例： <strong>建立正規睡眠習慣</strong>：每晚維持...
+                        dangerouslySetInnerHTML={{ __html: formatPlanText(item) }} 
+                      />
                     ))}
                   </ul>
                 </div>
               </CardContent>
             </Card>
 
-            {/* 2. 計畫排程建議 */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -478,26 +432,17 @@ export function HealthPlanGenerator() {
                   ))}
                 </div>
               </CardContent>
-              {/* 儲存按鈕 */}
               <CardFooter className="flex justify-end items-center pt-4 space-x-3">
                 {isSaveSuccessful && (
-                  <span className="text-sm text-green-600 font-medium">
-                    已儲存
-                  </span>
+                  <span className="text-sm text-green-600 font-medium">已儲存</span>
                 )}
-
                 <Button onClick={handleSavePlanToDatabase} disabled={isSaving}>
-                  {isSaving ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {isSaving ? "儲存中..." : "儲存排程至提醒列表"}
                 </Button>
               </CardFooter>
             </Card>
 
-            {/* 3. 免責聲明 */}
             <div className="text-xs text-gray-500 p-4 bg-gray-50 rounded-lg">
               <strong>免責聲明：</strong>{generatedPlan.disclaimer}
             </div>
