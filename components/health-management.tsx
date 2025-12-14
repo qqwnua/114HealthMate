@@ -74,65 +74,14 @@ export function HealthManagement() {
   const [lipidForm, setLipidForm] = useState({ total: "", hdl: "", ldl: "", tri: "", date: todayStr })
   const [weightForm, setWeightForm] = useState({ value: "", date: todayStr })
 
-  useEffect(() => {
-    fetchDataAndAnalyze();
-  }, []);
-
-  const fetchDataAndAnalyze = async () => {
-    // [修改] 處理載入狀態和 userId
-    setIsDataLoading(true);
-
-    const id = localStorage.getItem("userId");
-    setUserId(id); // 設定 userId 狀態
-
-    if (!id) {
-      setHistoryData([]); 
-      setLatestAnalysis(defaultAnalysis); // 未登入時顯示預設分析
-      setIsDataLoading(false); // 未登入，結束載入
-      return;
-    }
-
-    try {
-      // 使用 id 來抓取資料
-      const [personalRes, recordsRes] = await Promise.all([
-        fetch(`/api/personal_info?userId=${id}`),
-        fetch(`/api/health_records?userId=${id}&limit=30`)
-      ]);
-
-      // 先將資料解析出來
-      let profile = {};
-      if (personalRes.ok) {
-          profile = await personalRes.json();
-          setPersonalInfo(profile);
-      }
-
-      if (recordsRes.ok) {
-        const records = await recordsRes.json();
-        
-        // 排序
-        records.sort((a: any, b: any) => {
-           const dateA = a.rawDate ? new Date(a.rawDate).getTime() : 0;
-           const dateB = b.rawDate ? new Date(b.rawDate).getTime() : 0;
-           return dateA - dateB;
-        });
-
-        if (records.length > 0) {
-          setHistoryData(records);
-          // 傳送剛拿到的 profile 與 records
-          triggerAIAnalysis(records, profile);
-        } else {
-          setHistoryData([]);
-          setLatestAnalysis(defaultAnalysis); // 無數據時顯示預設分析
-        }
-      } else {
-        setHistoryData([]); // 即使 API 失敗，也確保數據清空
-        setLatestAnalysis(defaultAnalysis);
-      }
-    } catch (error) {
-      console.error("Fetch error:", error);
-    } finally {
-      setIsDataLoading(false); // 結束載入
-    }
+  const calculateAge = (birthdate: string) => {
+    if (!birthdate) return 40; 
+    const today = new Date();
+    const birth = new Date(birthdate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
   };
 
   const triggerAIAnalysis = async (records: HealthRecord[], profile: any) => {
@@ -142,11 +91,10 @@ export function HealthManagement() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                records: records.slice(-7), // 取最近 7 筆
+                records: records.slice(-7), 
                 profile: {
-                    age: calculateAge(profile.birthdate),
+                    age: calculateAge(profile.birthdate), // 這裡用到 calculateAge
                     gender: profile.gender,
-                    // 修正：傳送完整生活習慣給 AI (對應資料庫欄位名)
                     smoking: profile.smoking_status,
                     alcohol: profile.alcohol_consumption,
                     exercise: profile.exercise_frequency,
@@ -158,6 +106,7 @@ export function HealthManagement() {
 
         if (response.ok) {
             const result = await response.json();
+            console.log("前端收到的分析結果:", result);
             setLatestAnalysis(result);
         }
     } catch (e) {
@@ -167,16 +116,75 @@ export function HealthManagement() {
     }
   };
 
-  const calculateAge = (birthdate: string) => {
-    if (!birthdate) return 40; 
-    const today = new Date();
-    const birth = new Date(birthdate);
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-    return age;
+  const fetchDataAndAnalyze = async () => {
+    setIsDataLoading(true);
+
+    const id = localStorage.getItem("userId");
+    setUserId(id);
+
+    if (!id) {
+      setHistoryData([]); 
+      setLatestAnalysis(defaultAnalysis);
+      setIsDataLoading(false);
+      return;
+    }
+
+    try {
+      // 修正：同時抓取三支 API (包含 health_info)
+      const [personalRes, healthInfoRes, recordsRes] = await Promise.all([
+        fetch(`/api/personal_info?userId=${id}`),
+        fetch(`/api/health_info?userId=${id}`), // <--- 確保這行有加上
+        fetch(`/api/health_records?userId=${id}&limit=30`)
+      ]);
+
+      // 合併資料邏輯
+      let fullProfile = {};
+      
+      if (personalRes.ok) {
+          const pData = await personalRes.json();
+          fullProfile = { ...fullProfile, ...pData };
+      }
+
+      if (healthInfoRes.ok) {
+          const hData = await healthInfoRes.json();
+          fullProfile = { ...fullProfile, ...hData };
+      }
+
+      setPersonalInfo(fullProfile);
+
+      if (recordsRes.ok) {
+        const records = await recordsRes.json();
+        
+        records.sort((a: any, b: any) => {
+           const dateA = a.rawDate ? new Date(a.rawDate).getTime() : 0;
+           const dateB = b.rawDate ? new Date(b.rawDate).getTime() : 0;
+           return dateA - dateB;
+        });
+
+        if (records.length > 0) {
+          setHistoryData(records);
+          // 這裡呼叫 triggerAIAnalysis 就不會報錯了，因為它已經在上面定義過了
+          triggerAIAnalysis(records, fullProfile);
+        } else {
+          setHistoryData([]);
+          setLatestAnalysis(defaultAnalysis);
+        }
+      } else {
+        setHistoryData([]);
+        setLatestAnalysis(defaultAnalysis);
+      }
+    } catch (error) {
+      console.error("Fetch error:", error);
+    } finally {
+      setIsDataLoading(false);
+    }
   };
 
+  useEffect(() => {
+    fetchDataAndAnalyze();
+  }, []);
+
+  
   const handleSaveData = async (type: string, data: any) => {
     // [修改] 直接使用 state 中的 userId
     if (!userId) {
@@ -509,8 +517,28 @@ export function HealthManagement() {
           <Card>
             <CardContent className="p-6 space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium">AI 綜合風險評估</h3>
-                {isAnalyzing && <Loader2 className="h-4 w-4 animate-spin text-gray-500" />}
+                {/* 左側標題：加上 ShieldCheck 圖示讓它比較好看 */}
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-blue-500" />
+                  <h3 className="text-lg font-medium">AI 綜合風險評估</h3>
+                </div>
+
+                {/* 右側按鈕：重新分析 */}
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => fetchDataAndAnalyze()} 
+                    disabled={isAnalyzing}
+                  >
+                    {isAnalyzing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="h-4 w-4 text-orange-500" />
+                    )}
+                    <span className="ml-2">{isAnalyzing ? "AI 分析中..." : "重新分析"}</span>
+                  </Button>
+                </div>
               </div>
               
               {historyData.length === 0 ? (
@@ -522,11 +550,14 @@ export function HealthManagement() {
                   <div className="grid gap-4 md:grid-cols-2">
                      {/* Framingham */}
                      <div className="p-4 rounded-lg border bg-blue-50/50 border-blue-100 col-span-1 md:col-span-2 flex flex-col justify-between">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-blue-900">Framingham 心血管風險 (10年內)</span>
-                          <Badge className="bg-blue-600">
-                            {latestAnalysis?.framinghamRisk?.percentage || "--%"}
-                          </Badge>
+                        <div className="flex items-center justify-between">
+                          <span>Framingham 心血管風險 (10年內)</span>
+                          <span className="font-bold text-lg">
+                            {/* ✅ 修正：優先讀取 framinghamRisk，如果沒有才顯示 riskLevel 或未評估 */}
+                            {typeof latestAnalysis?.framinghamRisk === 'object' 
+                              ? (latestAnalysis.framinghamRisk as any).percentage 
+                              : (latestAnalysis?.framinghamRisk || latestAnalysis?.riskLevel || "未評估")}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <Badge variant={getRiskBadgeColor(latestAnalysis?.framinghamRisk?.level || "未評估") as any}>
