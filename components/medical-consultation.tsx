@@ -544,7 +544,6 @@ export function MedicalConsultation() {
                       {record.messages[0]?.content.substring(0, 50)}
                       {record.messages[0]?.content.length > 50 ? "..." : ""}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">共 {record.messages.length} 則訊息</p>
                     <Button
                       variant="outline"
                       size="sm"
