@@ -45,6 +45,9 @@ export async function POST(req: Request) {
       description,
       due_date,
       due_time,
+      notification_enabled,
+      repeat,
+      advance
     } = await req.json();
 
     if (!userId || !title || !due_date || !due_time) {
@@ -53,33 +56,27 @@ export async function POST(req: Request) {
 
     await client.query('BEGIN');
 
-    const query = `
-      INSERT INTO "public"."reminders"
-        (user_id, plan_id, title, description, due_date, due_time, completed, notification_enabled, "repeat", advance, created_at)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-      RETURNING *;
-    `;
+    const query = `INSERT INTO "public"."reminders" (user_id, plan_id, title, description, due_date, due_time, completed, notification_enabled, "repeat", advance, created_at, is_email_sent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11) RETURNING *;`;
     const values = [
-      userId,
-      plan_id || null,
-      title,
-      description || null,
-      due_date,
-      due_time,
-      false,  // completed
-      true,   // notification_enabled
-      'none', // repeat
-      'none'  // advance
-    ];
+      userId,
+      plan_id || null,
+      title,
+      description || null,
+      due_date,
+      due_time,
+      false,  // completed
+      notification_enabled ?? true,   // notification_enabled (使用前端傳入值或預設值)
+      repeat ?? 'none', // repeat
+      advance ?? 'none',  // advance
+      false   // <--- $11: 預設 Email 尚未發送
+    ];
 
-    const result = await client.query(query, values);
-    const newReminder = result.rows[0];
-    
-    await client.query('COMMIT');
-    
-    // 將新建立的完整提醒物件回傳
-    return NextResponse.json(newReminder, { status: 201 });
+    const result = await client.query(query, values);
+    const newReminder = result.rows[0];
+    
+    await client.query('COMMIT');
+    
+    return NextResponse.json(newReminder, { status: 201 });
 
   } catch (error) {
     await client.query('ROLLBACK');

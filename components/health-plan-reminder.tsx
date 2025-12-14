@@ -169,6 +169,48 @@ export function HealthPlanReminder() {
     }
   }
 
+  const handleSendBatch = async () => {
+    if (!userId) {
+      toast({ title: "請先登入", variant: "destructive" });
+      return;
+    }
+    
+    // 可以使用一個獨立的 loading 狀態或共用 isSubmitting
+    const originalIsSubmitting = isSubmitting;
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch('/api/reminders/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      
+      const result = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(result.error || "批次發送失敗");
+      }
+      
+      toast({ 
+        title: "批次 Email 發送完成", 
+        description: result.message || `成功發送 ${result.count} 個 Email。`
+      });
+      
+      // 由於後端更新了 is_email_sent 狀態，我們需要重新載入列表
+      fetchReminders(userId); 
+      
+    } catch (error: any) {
+      toast({ 
+        title: "Email 發送作業失敗", 
+        description: error.message || "請檢查後端日誌或網路連線。", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsSubmitting(originalIsSubmitting);
+    }
+  };
+
   const resetForm = () => {
     setNewTitle("")
     setNewDesc("")
@@ -206,6 +248,20 @@ export function HealthPlanReminder() {
           <Bell className="h-6 w-6 text-teal-600"/> 健康計畫提醒
         </h2>
         <div className="flex gap-2">
+          
+          <Button 
+            variant="outline" 
+            onClick={handleSendBatch} // 綁定到新函式
+            disabled={isSubmitting || isLoading} // 使用狀態來避免重複點擊
+            className="text-teal-600 border-teal-600 hover:bg-teal-50"
+          >
+            {isSubmitting 
+              ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> 
+              : <Bell className="h-4 w-4 mr-2"/>
+            }
+            發送今日 Email 提醒
+          </Button>
+          
           <Button variant="ghost" size="icon" onClick={() => userId && fetchReminders(userId)} disabled={isLoading}>
              <RefreshCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
