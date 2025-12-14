@@ -42,9 +42,6 @@ interface Reminder {
   due_date: string;
   due_time: string;
   completed: boolean;
-  notification_enabled: boolean;
-  repeat: string;
-  advance: string;
 }
 
 export function HealthPlanReminder() {
@@ -62,9 +59,7 @@ export function HealthPlanReminder() {
   const [newDesc, setNewDesc] = useState("")
   const [newDate, setNewDate] = useState(getTodayDateString())
   const [newTime, setNewTime] = useState("09:00")
-  const [newNotification, setNewNotification] = useState(true)
-  const [newRepeat, setNewRepeat] = useState("none")
-
+  
   // 1. 初始載入
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -122,8 +117,6 @@ export function HealthPlanReminder() {
           description: newDesc,
           due_date: newDate,
           due_time: newTime,
-          notification_enabled: newNotification,
-          repeat: newRepeat
         })
       })
       if (!res.ok) throw new Error("新增失敗")
@@ -216,8 +209,6 @@ export function HealthPlanReminder() {
     setNewDesc("")
     setNewDate(getTodayDateString())
     setNewTime("09:00")
-    setNewNotification(true)
-    setNewRepeat("none")
   }
 
   // --- 分類邏輯 ---
@@ -294,25 +285,6 @@ export function HealthPlanReminder() {
                     <Label htmlFor="time">時間</Label>
                     <Input id="time" type="time" value={newTime} onChange={e => setNewTime(e.target.value)} />
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 items-center">
-                   <div className="space-y-2">
-                     <Label>重複</Label>
-                     <Select value={newRepeat} onValueChange={setNewRepeat}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="不重複" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">不重複</SelectItem>
-                          <SelectItem value="daily">每天</SelectItem>
-                          <SelectItem value="weekly">每週</SelectItem>
-                        </SelectContent>
-                      </Select>
-                   </div>
-                   <div className="flex items-center space-x-2 pt-6">
-                      <Switch id="notify" checked={newNotification} onCheckedChange={setNewNotification} />
-                      <Label htmlFor="notify">開啟通知</Label>
-                   </div>
                 </div>
                 <Button onClick={handleAddReminder} className="w-full bg-teal-600 text-white mt-4" disabled={isSubmitting}>
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : "確認新增"}
@@ -441,16 +413,6 @@ function ReminderCard({ reminder, onToggle, onDelete }: { reminder: Reminder, on
               <span className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full">
                 <Clock className="h-3 w-3"/> {reminder.due_time}
               </span>
-              {reminder.repeat !== 'none' && (
-                  <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">
-                    <RefreshCcw className="h-3 w-3"/> {reminder.repeat === 'daily' ? '每天' : '每週'}
-                  </span>
-              )}
-              {!reminder.notification_enabled && (
-                  <span className="flex items-center gap-1 bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">
-                    <BellOff className="h-3 w-3"/> 靜音
-                  </span>
-              )}
             </div>
           </div>
         </div>

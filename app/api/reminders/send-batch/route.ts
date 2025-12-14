@@ -45,7 +45,6 @@ export async function POST(req: Request) {
             WHERE user_id = $1 
             AND due_date = $2 
             AND completed = FALSE 
-            AND notification_enabled = TRUE 
             AND is_email_sent = FALSE;
         `;
         const result = await client.query(selectQuery, [userId, todayStr]);

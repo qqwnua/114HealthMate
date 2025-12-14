@@ -13,9 +13,6 @@ interface Reminder {
   due_date: string; // 格式: YYYY-MM-DD
   due_time: string; // 格式: HH:MM:SS
   completed: boolean;
-  notification_enabled: boolean;
-  repeat: string;
-  advance: string;
   created_at: Date;
   // ⚠️ 這是您在 DB 中新增的欄位
   is_email_sent: boolean; 

@@ -35,40 +35,44 @@ export async function GET(req: Request) {
 // --- POST /api/reminders ---
 // 新增一個提醒
 export async function POST(req: Request) {
-  const client = await pool.connect();
-  try {
-    // 欄位名稱應與 'reminders' 表和前端傳來的 body 匹配
-    const {
-      userId,
-      plan_id,
-      title,
-      description,
-      due_date,
-      due_time,
-      notification_enabled,
-      repeat,
-      advance
-    } = await req.json();
-
-    if (!userId || !title || !due_date || !due_time) {
-      return NextResponse.json({ error: '缺少必要欄位 (userId, title, due_date, due_time)' }, { status: 400 });
-    }
-
-    await client.query('BEGIN');
-
-    const query = `INSERT INTO "public"."reminders" (user_id, plan_id, title, description, due_date, due_time, completed, notification_enabled, "repeat", advance, created_at, is_email_sent) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11) RETURNING *;`;
-    const values = [
+  const client = await pool.connect();
+  try {
+    // 1. 欄位解構：移除 notification_enabled, repeat, advance
+    const {
       userId,
-      plan_id || null,
+      plan_id,
       title,
-      description || null,
+      description,
       due_date,
       due_time,
-      false,  // completed
-      notification_enabled ?? true,   // notification_enabled (使用前端傳入值或預設值)
-      repeat ?? 'none', // repeat
-      advance ?? 'none',  // advance
-      false   // <--- $11: 預設 Email 尚未發送
+      // ⚠️ 這些欄位已移除：notification_enabled, repeat, advance
+    } = await req.json();
+
+    if (!userId || !title || !due_date || !due_time) {
+      return NextResponse.json({ error: '缺少必要欄位 (userId, title, due_date, due_time)' }, { status: 400 });
+    }
+
+    await client.query('BEGIN');
+
+    // 2. 調整 SQL 查詢：移除三個欄位，只剩下 8 個參數 ($1 到 $8)
+    const query = `
+      INSERT INTO "public"."reminders" 
+        (user_id, plan_id, title, description, due_date, due_time, completed, created_at, is_email_sent) 
+      VALUES 
+        ($1, $2, $3, $4, $5, $6, $7, NOW(), $8) 
+      RETURNING *;
+    `;
+    
+    // 3. 調整參數值：對應新的 $1 到 $8 順序
+    const values = [
+      userId,               // $1
+      plan_id || null,      // $2
+      title,                // $3
+      description || null,  // $4
+      due_date,             // $5
+      due_time,             // $6
+      false,                // $7: completed
+      false                 // $8: is_email_sent (預設 Email 尚未發送)
     ];
 
     const result = await client.query(query, values);
@@ -78,13 +82,13 @@ export async function POST(req: Request) {
     
     return NextResponse.json(newReminder, { status: 201 });
 
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('[API /reminders POST] Error:', error);
-    let errorMessage = '新增提醒時發生未知錯誤';
-    if (error instanceof Error) errorMessage = error.message;
-    return NextResponse.json({ error: '新增提醒失敗', details: errorMessage }, { status: 500 });
-  } finally {
-    client.release();
-  }
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[API /reminders POST] Error:', error);
+    let errorMessage = '新增提醒時發生未知錯誤';
+    if (error instanceof Error) errorMessage = error.message;
+    return NextResponse.json({ error: '新增提醒失敗', details: errorMessage }, { status: 500 });
+  } finally {
+    client.release();
+  }
 }
